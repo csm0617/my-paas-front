@@ -40,11 +40,28 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
     if (!isOpen) return;
     setStep(0);
     setError(null);
-    setFormData((prev) => ({ ...prev, namespace: currentNamespace || prev.namespace }));
+    setFormData({
+      name: '',
+      namespace: currentNamespace || 'default',
+      image: '',
+      ports: [{ port: 80, protocol: 'TCP' }],
+      replicas: 1,
+      maxReplicas: 5,
+      env: {},
+      targetCpuUtilization: 80,
+      targetMemoryUtilization: 80,
+      enableService: true,
+      serviceType: 'ClusterIP',
+      enableIngress: false,
+      ingressDomain: '',
+    });
+    setEnvList([]);
+    setConfigList([]);
+    setSecretList([]);
     if (namespaces.length === 0 && !namespacesLoading) {
       fetchNamespaces();
     }
-  }, [isOpen]);
+  }, [isOpen, currentNamespace]);
 
   const handleListChange = (
     list: { key: string; value: string }[],
