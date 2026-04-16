@@ -3,6 +3,7 @@ import { DeployCommand } from '@/lib/api';
 import { X, Plus, Trash2 } from 'lucide-react';
 import ResourcesSchedulingSection from '@/components/ResourcesSchedulingSection';
 import { useNamespaceStore } from '@/store/namespaceStore';
+import { useAppStore } from '@/store/appStore';
 
 interface Props {
   isOpen: boolean;
@@ -11,7 +12,8 @@ interface Props {
 }
 
 export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
-  const { namespaces, fetchNamespaces, loading: namespacesLoading, currentNamespace } = useNamespaceStore();
+  const { namespaces, fetchNamespaces, loading: namespacesLoading } = useNamespaceStore();
+  const { namespace: currentNamespace } = useAppStore();
   const steps = ['Basic', 'Networking', 'Resources & Scheduling', 'Advanced', 'Review'] as const;
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -40,28 +42,11 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
     if (!isOpen) return;
     setStep(0);
     setError(null);
-    setFormData({
-      name: '',
-      namespace: currentNamespace || 'default',
-      image: '',
-      ports: [{ port: 80, protocol: 'TCP' }],
-      replicas: 1,
-      maxReplicas: 5,
-      env: {},
-      targetCpuUtilization: 80,
-      targetMemoryUtilization: 80,
-      enableService: true,
-      serviceType: 'ClusterIP',
-      enableIngress: false,
-      ingressDomain: '',
-    });
-    setEnvList([]);
-    setConfigList([]);
-    setSecretList([]);
+    setFormData((prev) => ({ ...prev, namespace: currentNamespace || prev.namespace }));
     if (namespaces.length === 0 && !namespacesLoading) {
       fetchNamespaces();
     }
-  }, [isOpen, currentNamespace]);
+  }, [isOpen]);
 
   const handleListChange = (
     list: { key: string; value: string }[],
