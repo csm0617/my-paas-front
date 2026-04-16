@@ -275,6 +275,13 @@ export const api = {
     const res = await apiClient.get<Result<string>>(`/applications/deployments/${namespace}/${name}/yaml`);
     return res.data.data;
   },
+
+  checkNodePort: async (port: number): Promise<boolean> => {
+    const res = await apiClient.get<Result<boolean>>(`/applications/ports/check-nodeport`, {
+      params: { port },
+    });
+    return res.data.data;
+  },
 };
 
 export interface ServicePort {

@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { DeployCommand } from '@/lib/api';
-import { X, Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { DeployCommand, api } from '@/lib/api';
+import { X, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import ResourcesSchedulingSection from '@/components/ResourcesSchedulingSection';
 import { useNamespaceStore } from '@/store/namespaceStore';
 import { useAppStore } from '@/store/appStore';
@@ -37,16 +37,30 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
   const [envList, setEnvList] = useState<{ key: string; value: string }[]>([]);
   const [configList, setConfigList] = useState<{ key: string; value: string }[]>([]);
   const [secretList, setSecretList] = useState<{ key: string; value: string }[]>([]);
+  const [nodePortStatus, setNodePortStatus] = useState<Record<number, { checking: boolean, available: boolean | null }>>({});
 
   useEffect(() => {
     if (!isOpen) return;
     setStep(0);
     setError(null);
+    setNodePortStatus({});
     setFormData((prev) => ({ ...prev, namespace: currentNamespace || prev.namespace }));
     if (namespaces.length === 0 && !namespacesLoading) {
       fetchNamespaces();
     }
   }, [isOpen]);
+
+  const handleNodePortCheck = async (port: number) => {
+    if (!port || port < 30000 || port > 32767) return;
+    
+    setNodePortStatus(prev => ({ ...prev, [port]: { checking: true, available: null } }));
+    try {
+      const available = await api.checkNodePort(port);
+      setNodePortStatus(prev => ({ ...prev, [port]: { checking: false, available } }));
+    } catch (err) {
+      setNodePortStatus(prev => ({ ...prev, [port]: { checking: false, available: null } }));
+    }
+  };
 
   const handleListChange = (
     list: { key: string; value: string }[],
@@ -128,6 +142,10 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
       if (!formData.ports || formData.ports.length === 0) return '至少配置一个端口';
       for (const p of formData.ports) {
         if (!Number.isFinite(p.port) || p.port < 1 || p.port > 65535) return '端口必须在 1-65535 之间';
+        if (p.enableNodePort && p.nodePort !== undefined) {
+          if (p.nodePort < 30000 || p.nodePort > 32767) return 'NodePort 必须在 30000-32767 之间';
+          if (nodePortStatus[p.nodePort]?.available === false) return `NodePort ${p.nodePort} 已被占用`;
+        }
       }
       if (formData.enableIngress && !formData.ingressDomain?.trim()) return '启用 Ingress 时必须填写域名 (Host)';
     }
@@ -385,20 +403,63 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                           </div>
 
                           {portSpec.enableNodePort && (
-                            <input
-                              type="number"
-                              min="30000"
-                              max="32767"
-                              placeholder="Auto"
-                              className="w-24 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                              value={portSpec.nodePort || ''}
-                              onChange={(e) => {
-                                const newPorts = [...formData.ports];
-                                const val = e.target.value;
-                                newPorts[index].nodePort = val ? Number(val) : undefined;
-                                setFormData({ ...formData, ports: newPorts });
-                              }}
-                            />
+                            <div className="relative group flex flex-col">
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="30000"
+                                  max="32767"
+                                  placeholder="Auto"
+                                  className={`w-28 pl-3 pr-8 py-2 bg-slate-50 dark:bg-slate-900 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm transition-colors ${
+                                    portSpec.nodePort && nodePortStatus[portSpec.nodePort]
+                                      ? nodePortStatus[portSpec.nodePort].checking
+                                        ? 'border-blue-300 dark:border-blue-700'
+                                        : nodePortStatus[portSpec.nodePort].available === true
+                                          ? 'border-emerald-500 dark:border-emerald-500 focus:ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20'
+                                          : nodePortStatus[portSpec.nodePort].available === false
+                                            ? 'border-red-500 dark:border-red-500 focus:ring-red-500 bg-red-50/50 dark:bg-red-900/20'
+                                            : 'border-slate-300 dark:border-slate-600'
+                                      : 'border-slate-300 dark:border-slate-600'
+                                  }`}
+                                  value={portSpec.nodePort || ''}
+                                  onChange={(e) => {
+                                    const newPorts = [...formData.ports];
+                                    const val = e.target.value;
+                                    const portNum = val ? Number(val) : undefined;
+                                    newPorts[index].nodePort = portNum;
+                                    setFormData({ ...formData, ports: newPorts });
+                                    
+                                    if (portNum && portNum >= 30000 && portNum <= 32767) {
+                                      handleNodePortCheck(portNum);
+                                    }
+                                  }}
+                                />
+                                {portSpec.nodePort && nodePortStatus[portSpec.nodePort] && (
+                                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
+                                    {nodePortStatus[portSpec.nodePort].checking ? (
+                                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                    ) : nodePortStatus[portSpec.nodePort].available === true ? (
+                                      <CheckCircle2 size={16} className="text-emerald-500" />
+                                    ) : nodePortStatus[portSpec.nodePort].available === false ? (
+                                      <AlertCircle size={16} className="text-red-500" />
+                                    ) : null}
+                                  </div>
+                                )}
+                              </div>
+                              {/* 悬浮提示框 */}
+                              {portSpec.nodePort && nodePortStatus[portSpec.nodePort] && nodePortStatus[portSpec.nodePort].available === false && (
+                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                  端口已被占用
+                                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-red-600 rotate-45"></div>
+                                </div>
+                              )}
+                              {portSpec.nodePort && nodePortStatus[portSpec.nodePort] && nodePortStatus[portSpec.nodePort].available === true && (
+                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                  端口可用
+                                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-600 rotate-45"></div>
+                                </div>
+                              )}
+                            </div>
                           )}
 
                           <button
