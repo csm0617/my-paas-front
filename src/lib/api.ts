@@ -52,11 +52,19 @@ export interface ProbeSpec {
   periodSeconds: number;
 }
 
+export interface PortSpec {
+  port: number;
+  protocol: 'TCP' | 'UDP';
+  enableNodePort?: boolean;
+  nodePort?: number;
+}
+
 export interface DeployCommand {
   name: string;
   namespace: string;
   image: string;
-  port: number;
+  port?: number;
+  ports: PortSpec[];
   replicas: number;
   maxReplicas: number;
   env: EnvVar;

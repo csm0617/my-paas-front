@@ -26,7 +26,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
     env: {},
     targetCpuUtilization: 80,
     targetMemoryUtilization: 80,
-    enableService: false,
+    enableService: true,
     serviceType: 'ClusterIP',
     enableIngress: false,
     ingressDomain: '',
@@ -86,6 +86,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
     return {
       ...formData,
       port: formData.ports[0].port, // Keep for legacy backend compatibility
+      enableService: true, // Auto-enable service since we manage it at port level
       env: toMap(envList),
       configs: toMap(configList),
       secrets: toMap(secretList),
@@ -325,13 +326,13 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
               <div className="space-y-6">
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    Port Configuration
+                    Port Configuration & Service
                   </h3>
                   <div className="col-span-3">
                     <div className="mb-2">
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Container Ports</label>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        这是容器内部监听的端口。如果下方开启了NodePort服务，可选择配置映射到宿主机的端口。
+                        这是容器内部监听的端口。可通过开启 NodePort 精确控制该端口是否映射到宿主机对外暴露。
                       </p>
                     </div>
                     <div className="space-y-3">
@@ -350,24 +351,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                               setFormData({ ...formData, ports: newPorts });
                             }}
                           />
-                          {formData.enableService && formData.serviceType === 'NodePort' && (
-                            <input
-                              type="number"
-                              min="30000"
-                              max="32767"
-                              placeholder="NodePort (Auto)"
-                              className="w-32 px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                              value={portSpec.nodePort || ''}
-                              onChange={(e) => {
-                                const newPorts = [...formData.ports];
-                                const val = e.target.value;
-                                newPorts[index].nodePort = val ? Number(val) : undefined;
-                                setFormData({ ...formData, ports: newPorts });
-                              }}
-                            />
-                          )}
                           <select
-                            className="w-32 px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-24 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                             value={portSpec.protocol}
                             onChange={(e) => {
                               const newPorts = [...formData.ports];
@@ -378,6 +363,42 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                             <option value="TCP">TCP</option>
                             <option value="UDP">UDP</option>
                           </select>
+                          
+                          <div className="flex items-center space-x-2 px-2">
+                            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">NodePort</span>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={!!portSpec.enableNodePort}
+                                onChange={(e) => {
+                                  const newPorts = [...formData.ports];
+                                  newPorts[index].enableNodePort = e.target.checked;
+                                  if (!e.target.checked) newPorts[index].nodePort = undefined;
+                                  setFormData({ ...formData, ports: newPorts });
+                                }}
+                              />
+                              <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
+                            </label>
+                          </div>
+
+                          {portSpec.enableNodePort && (
+                            <input
+                              type="number"
+                              min="30000"
+                              max="32767"
+                              placeholder="Auto"
+                              className="w-24 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                              value={portSpec.nodePort || ''}
+                              onChange={(e) => {
+                                const newPorts = [...formData.ports];
+                                const val = e.target.value;
+                                newPorts[index].nodePort = val ? Number(val) : undefined;
+                                setFormData({ ...formData, ports: newPorts });
+                              }}
+                            />
+                          )}
+
                           <button
                             type="button"
                             onClick={() => {
@@ -406,75 +427,39 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
 
                 <div className="space-y-4 pt-4">
                   <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    Service & Routing
+                    Routing
                   </h3>
-                  <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Enable Internal Service</label>
-                      <p className="text-xs text-slate-500">Creates a Kubernetes Service to expose the application within the cluster.</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={formData.enableService}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setFormData({
-                            ...formData,
-                            enableService: checked,
-                            enableIngress: checked ? formData.enableIngress : false,
-                          });
-                        }}
-                      />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
 
-                  {formData.enableService && (
-                    <div className="pl-4 border-l-2 border-blue-500 space-y-4 animate-in fade-in slide-in-from-left-2">
+                  <div className="pl-4 space-y-4 animate-in fade-in slide-in-from-left-2">
+                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Service Type</label>
-                        <select
-                          value={formData.serviceType}
-                          onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
-                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                        >
-                          <option value="ClusterIP">ClusterIP (Internal Only)</option>
-                          <option value="NodePort">NodePort (Expose on Node IPs)</option>
-                        </select>
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Enable External Access (Ingress)</label>
+                        <p className="text-xs text-slate-500">Expose the application to the internet via a domain name.</p>
                       </div>
-
-                      <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <div>
-                          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Enable External Access (Ingress)</label>
-                          <p className="text-xs text-slate-500">Expose the application to the internet via a domain name.</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="sr-only peer"
-                            checked={formData.enableIngress}
-                            onChange={(e) => setFormData({ ...formData, enableIngress: e.target.checked })}
-                          />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-                        </label>
-                      </div>
-
-                      {formData.enableIngress && (
-                        <div className="pl-4 border-l-2 border-purple-500 animate-in fade-in slide-in-from-left-2">
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Domain (Host)</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. app.example.com"
-                            value={formData.ingressDomain}
-                            onChange={(e) => setFormData({ ...formData, ingressDomain: e.target.value })}
-                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                          />
-                        </div>
-                      )}
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={formData.enableIngress}
+                          onChange={(e) => setFormData({ ...formData, enableIngress: e.target.checked })}
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
+                      </label>
                     </div>
-                  )}
+
+                    {formData.enableIngress && (
+                      <div className="pl-4 border-l-2 border-purple-500 animate-in fade-in slide-in-from-left-2">
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Domain (Host)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. app.example.com"
+                          value={formData.ingressDomain}
+                          onChange={(e) => setFormData({ ...formData, ingressDomain: e.target.value })}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -685,7 +670,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500 dark:text-slate-400">Ports</dt>
                       <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">
-                        {commandPreview.ports.map(p => `${p.port}/${p.protocol}${p.nodePort && commandPreview.enableService && commandPreview.serviceType === 'NodePort' ? ` (NodePort: ${p.nodePort})` : ''}`).join(', ')}
+                        {commandPreview.ports.map(p => `${p.port}/${p.protocol}${p.enableNodePort ? ` (NodePort${p.nodePort ? `: ${p.nodePort}` : ''})` : ''}`).join(', ')}
                       </dd>
                     </div>
                     <div className="flex items-start justify-between gap-3">
@@ -697,7 +682,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500 dark:text-slate-400">Service</dt>
                       <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">
-                        {commandPreview.enableService ? commandPreview.serviceType : 'Disabled'}
+                        {commandPreview.ports.some(p => p.enableNodePort) ? 'ClusterIP + NodePort' : 'ClusterIP'}
                       </dd>
                     </div>
                     <div className="flex items-start justify-between gap-3">
