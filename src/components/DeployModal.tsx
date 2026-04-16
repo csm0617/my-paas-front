@@ -403,60 +403,53 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                           </div>
 
                           {portSpec.enableNodePort && (
-                            <div className="relative group flex flex-col">
-                              <div className="relative">
-                                <input
-                                  type="number"
-                                  min="30000"
-                                  max="32767"
-                                  placeholder="Auto"
-                                  className={`w-28 pl-3 pr-8 py-2 bg-slate-50 dark:bg-slate-900 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm transition-colors ${
-                                    portSpec.nodePort && nodePortStatus[portSpec.nodePort]
-                                      ? nodePortStatus[portSpec.nodePort].checking
-                                        ? 'border-blue-300 dark:border-blue-700'
-                                        : nodePortStatus[portSpec.nodePort].available === true
-                                          ? 'border-emerald-500 dark:border-emerald-500 focus:ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20'
-                                          : nodePortStatus[portSpec.nodePort].available === false
-                                            ? 'border-red-500 dark:border-red-500 focus:ring-red-500 bg-red-50/50 dark:bg-red-900/20'
-                                            : 'border-slate-300 dark:border-slate-600'
-                                      : 'border-slate-300 dark:border-slate-600'
-                                  }`}
-                                  value={portSpec.nodePort || ''}
-                                  onChange={(e) => {
-                                    const newPorts = [...formData.ports];
-                                    const val = e.target.value;
-                                    const portNum = val ? Number(val) : undefined;
-                                    newPorts[index].nodePort = portNum;
-                                    setFormData({ ...formData, ports: newPorts });
-                                    
-                                    if (portNum && portNum >= 30000 && portNum <= 32767) {
-                                      handleNodePortCheck(portNum);
-                                    }
-                                  }}
-                                />
-                                {portSpec.nodePort && nodePortStatus[portSpec.nodePort] && (
-                                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
-                                    {nodePortStatus[portSpec.nodePort].checking ? (
-                                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                                    ) : nodePortStatus[portSpec.nodePort].available === true ? (
-                                      <CheckCircle2 size={16} className="text-emerald-500" />
-                                    ) : nodePortStatus[portSpec.nodePort].available === false ? (
-                                      <AlertCircle size={16} className="text-red-500" />
-                                    ) : null}
-                                  </div>
-                                )}
-                              </div>
-                              {/* 悬浮提示框 */}
-                              {portSpec.nodePort && nodePortStatus[portSpec.nodePort] && nodePortStatus[portSpec.nodePort].available === false && (
-                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                  端口已被占用
-                                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-red-600 rotate-45"></div>
+                            <div className="relative group">
+                              <input
+                                type="number"
+                                min="30000"
+                                max="32767"
+                                placeholder="Auto"
+                                className={`w-28 pl-3 pr-8 py-2 bg-slate-50 dark:bg-slate-900 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm transition-colors ${
+                                  portSpec.nodePort && nodePortStatus[portSpec.nodePort]
+                                    ? nodePortStatus[portSpec.nodePort].checking
+                                      ? 'border-blue-300 dark:border-blue-700'
+                                      : nodePortStatus[portSpec.nodePort].available === true
+                                        ? 'border-emerald-500 dark:border-emerald-500 focus:ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20'
+                                        : nodePortStatus[portSpec.nodePort].available === false
+                                          ? 'border-red-500 dark:border-red-500 focus:ring-red-500 bg-red-50/50 dark:bg-red-900/20'
+                                          : 'border-slate-300 dark:border-slate-600'
+                                    : 'border-slate-300 dark:border-slate-600'
+                                }`}
+                                value={portSpec.nodePort || ''}
+                                onChange={(e) => {
+                                  const newPorts = [...formData.ports];
+                                  const val = e.target.value;
+                                  const portNum = val ? Number(val) : undefined;
+                                  newPorts[index].nodePort = portNum;
+                                  setFormData({ ...formData, ports: newPorts });
+                                  
+                                  if (portNum && portNum >= 30000 && portNum <= 32767) {
+                                    handleNodePortCheck(portNum);
+                                  }
+                                }}
+                              />
+                              {portSpec.nodePort && nodePortStatus[portSpec.nodePort] && (
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
+                                  {nodePortStatus[portSpec.nodePort].checking ? (
+                                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                  ) : nodePortStatus[portSpec.nodePort].available === true ? (
+                                    <CheckCircle2 size={16} className="text-emerald-500" />
+                                  ) : nodePortStatus[portSpec.nodePort].available === false ? (
+                                    <AlertCircle size={16} className="text-red-500" />
+                                  ) : null}
                                 </div>
                               )}
-                              {portSpec.nodePort && nodePortStatus[portSpec.nodePort] && nodePortStatus[portSpec.nodePort].available === true && (
-                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                  端口可用
-                                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-600 rotate-45"></div>
+                              
+                              {/* Tooltip for conflict */}
+                              {portSpec.nodePort && nodePortStatus[portSpec.nodePort]?.available === false && (
+                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 bg-red-600 text-white text-xs rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                                  Port {portSpec.nodePort} in use
+                                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-red-600"></div>
                                 </div>
                               )}
                             </div>
