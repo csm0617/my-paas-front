@@ -140,11 +140,20 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
 
     if (currentStep === 1) {
       if (!formData.ports || formData.ports.length === 0) return '至少配置一个端口';
+      
+      const containerPorts = new Set<number>();
+      const nodePorts = new Set<number>();
+      
       for (const p of formData.ports) {
         if (!Number.isFinite(p.port) || p.port < 1 || p.port > 65535) return '端口必须在 1-65535 之间';
+        if (containerPorts.has(p.port)) return `容器端口 ${p.port} 重复配置`;
+        containerPorts.add(p.port);
+        
         if (p.enableNodePort && p.nodePort !== undefined) {
           if (p.nodePort < 30000 || p.nodePort > 32767) return 'NodePort 必须在 30000-32767 之间';
-          if (nodePortStatus[p.nodePort]?.available === false) return `NodePort ${p.nodePort} 已被占用`;
+          if (nodePorts.has(p.nodePort)) return `NodePort ${p.nodePort} 在当前表单中重复配置`;
+          nodePorts.add(p.nodePort);
+          if (nodePortStatus[p.nodePort]?.available === false) return `NodePort ${p.nodePort} 已被集群内其他服务占用`;
         }
       }
       if (formData.enableIngress && !formData.ingressDomain?.trim()) return '启用 Ingress 时必须填写域名 (Host)';
