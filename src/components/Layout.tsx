@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Settings, Layers, Box, Share2, Link as LinkIcon, Server, FileCode } from 'lucide-react';
+import { LayoutDashboard, Settings, Layers, Box, Share2, Link as LinkIcon, Server, FileCode, Activity } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -8,8 +8,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans">
       {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 shadow-sm">
-        <div className="p-6 flex items-center space-x-3">
+      <aside className="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-full">
+        <div className="p-6 flex items-center space-x-3 shrink-0">
           <div className="bg-blue-600 text-white p-2 rounded-lg">
             <Layers size={24} />
           </div>
@@ -17,7 +17,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             PaaS Console
           </h1>
         </div>
-        <nav className="mt-6 px-4 space-y-2">
+        <nav className="flex-1 overflow-y-auto mt-6 px-4 space-y-2 pb-6">
           <Link
             to="/"
             className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${
@@ -50,6 +50,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           >
             <Box size={20} />
             <span>Namespaces</span>
+          </Link>
+          <Link
+            to="/deployments"
+            className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+              location.pathname === '/deployments'
+                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
+                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            <Activity size={20} />
+            <span>Deployments</span>
           </Link>
           <Link
             to="/pods"
@@ -113,7 +124,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center px-8 shadow-sm z-10">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
-            {location.pathname === '/' ? 'Application Management' : location.pathname === '/nodes' ? 'Node Management' : location.pathname === '/namespaces' ? 'Namespace Management' : location.pathname === '/pods' ? 'Pod Management' : location.pathname === '/services' ? 'Service Management' : location.pathname === '/ingresses' ? 'Ingress Management' : location.pathname === '/configmaps' ? 'Config Group Management' : 'Settings'}
+            {location.pathname === '/' ? 'Application Management' : location.pathname === '/nodes' ? 'Node Management' : location.pathname === '/namespaces' ? 'Namespace Management' : location.pathname === '/deployments' ? 'Deployment Management' : location.pathname === '/pods' ? 'Pod Management' : location.pathname === '/services' ? 'Service Management' : location.pathname === '/ingresses' ? 'Ingress Management' : location.pathname === '/configmaps' ? 'Config Group Management' : 'Settings'}
           </h2>
         </header>
         <div className="flex-1 overflow-auto p-8">

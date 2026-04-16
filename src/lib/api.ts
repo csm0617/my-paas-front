@@ -70,6 +70,13 @@ export interface DeployCommand {
   serviceType?: string;
   enableIngress?: boolean;
   ingressDomain?: string;
+  requestsCpu?: string;
+  requestsMemory?: string;
+  limitsCpu?: string;
+  limitsMemory?: string;
+  nodeSelector?: Record<string, string>;
+  affinityJson?: string;
+  tolerationsJson?: string;
 }
 
 export interface ApplicationDeployment {
@@ -148,6 +155,9 @@ export interface Pod {
   name: string;
   namespace: string;
   status: string;
+  phase?: string;
+  reason?: string;
+  message?: string;
   nodeName: string;
   podIP: string;
   startTime: string;
@@ -176,6 +186,24 @@ export const podApi = {
     const res = await apiClient.get<Result<string>>(`/namespaces/${namespace}/pods/${name}/terminal`);
     return res.data.data;
   }
+};
+
+export interface K8sEvent {
+  namespace?: string;
+  name?: string;
+  type?: string;
+  reason?: string;
+  message?: string;
+  involvedObjectKind?: string;
+  involvedObjectName?: string;
+  lastTimestamp?: string;
+}
+
+export const eventApi = {
+  list: async (namespace: string, params?: Record<string, unknown>): Promise<K8sEvent[]> => {
+    const res = await apiClient.get<Result<K8sEvent[]>>(`/namespaces/${namespace}/events`, { params });
+    return res.data.data;
+  },
 };
 
 export const api = {
@@ -232,6 +260,11 @@ export const api = {
     const res = await apiClient.get<Result<string>>(`/applications/deployments/${namespace}/${name}/terminal`, {
       params: { podName },
     });
+    return res.data.data;
+  },
+
+  getYaml: async (namespace: string, name: string): Promise<string> => {
+    const res = await apiClient.get<Result<string>>(`/applications/deployments/${namespace}/${name}/yaml`);
     return res.data.data;
   },
 };
@@ -344,3 +377,55 @@ export const configMapApi = {
   }
 };
 
+export interface K8sDeployment {
+  name: string;
+  namespace: string;
+  image: string;
+  replicas: number;
+  availableReplicas: number;
+  status: string;
+  creationTimestamp?: string;
+}
+
+export interface CreateDeploymentCommand {
+  name: string;
+  image: string;
+  port: number;
+  replicas: number;
+  requestsCpu?: string;
+  requestsMemory?: string;
+  limitsCpu?: string;
+  limitsMemory?: string;
+  nodeSelector?: Record<string, string>;
+  affinityJson?: string;
+  tolerationsJson?: string;
+}
+
+export type CreateDeploymentRequest = CreateDeploymentCommand;
+
+export const deploymentApi = {
+  list: async (namespace: string): Promise<K8sDeployment[]> => {
+    const res = await apiClient.get<Result<K8sDeployment[]>>(`/namespaces/${namespace}/deployments`);
+    return res.data.data;
+  },
+  create: async (namespace: string, request: CreateDeploymentRequest): Promise<K8sDeployment> => {
+    const res = await apiClient.post<Result<K8sDeployment>>(`/namespaces/${namespace}/deployments`, request);
+    return res.data.data;
+  },
+  scale: async (namespace: string, name: string, replicas: number): Promise<void> => {
+    await apiClient.put(`/namespaces/${namespace}/deployments/${name}/scale`, null, {
+      params: { replicas },
+    });
+  },
+  updateImage: async (namespace: string, name: string, image: string): Promise<void> => {
+    await apiClient.put(`/namespaces/${namespace}/deployments/${name}/image`, null, {
+      params: { image },
+    });
+  },
+  restart: async (namespace: string, name: string): Promise<void> => {
+    await apiClient.post(`/namespaces/${namespace}/deployments/${name}/restart`);
+  },
+  delete: async (namespace: string, name: string): Promise<void> => {
+    await apiClient.delete(`/namespaces/${namespace}/deployments/${name}`);
+  }
+};

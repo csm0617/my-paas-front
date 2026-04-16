@@ -19,6 +19,8 @@ interface AppState {
   rollback: (name: string) => Promise<void>;
 }
 
+let fetchDeploymentsTimeout: ReturnType<typeof setTimeout> | null = null;
+
 export const useAppStore = create<AppState>((set, get) => ({
   namespace: 'default',
   deployments: [],
@@ -29,15 +31,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ namespace });
   },
 
-  fetchDeployments: async () => {
-    set({ loading: true, error: null });
-    try {
-      const { namespace } = get();
-      const data = await api.getDeployments(namespace);
-      set({ deployments: data, loading: false });
-    } catch (err: any) {
-      set({ error: err.message || 'Failed to fetch deployments', loading: false });
-    }
+  fetchDeployments: () => {
+    return new Promise<void>((resolve) => {
+      if (fetchDeploymentsTimeout) {
+        clearTimeout(fetchDeploymentsTimeout);
+      }
+      fetchDeploymentsTimeout = setTimeout(async () => {
+        set({ loading: true, error: null });
+        try {
+          const { namespace } = get();
+          const data = await api.getDeployments(namespace);
+          set({ deployments: data, loading: false });
+        } catch (err: any) {
+          set({ error: err.message || 'Failed to fetch deployments', loading: false });
+        }
+        resolve();
+      }, 300); // 300ms debounce
+    });
   },
 
   deploy: async (command) => {

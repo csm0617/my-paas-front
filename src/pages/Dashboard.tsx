@@ -5,9 +5,12 @@ import ApplicationCard from '@/components/ApplicationCard';
 import DeployModal from '@/components/DeployModal';
 import LogsDrawer from '@/components/LogsDrawer';
 import TerminalDrawer from '@/components/TerminalDrawer';
+import YamlModal from '@/components/YamlModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import InputDialog from '@/components/InputDialog';
 import { ApplicationDeployment, DeployCommand, Pod } from '@/lib/api';
 import { Plus, RefreshCw, FolderTree, AlertCircle } from 'lucide-react';
+import { useK8sWatch } from '@/hooks/useK8sWatch';
 
 export default function Dashboard() {
   const { namespace, deployments, loading, error, setNamespace, fetchDeployments, deploy, scale, updateImage, deleteDeployment, start, stop, restart, rollback } = useAppStore();
@@ -16,6 +19,11 @@ export default function Dashboard() {
   const [isDeployModalOpen, setDeployModalOpen] = useState(false);
   const [logsPod, setLogsPod] = useState<Pod | null>(null);
   const [terminalPod, setTerminalPod] = useState<Pod | null>(null);
+  const [yamlApp, setYamlApp] = useState<ApplicationDeployment | null>(null);
+  const [inputAction, setInputAction] = useState<{
+    type: 'scale' | 'image';
+    app: ApplicationDeployment;
+  } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     type: 'delete' | 'stop' | 'restart' | 'rollback';
     app: ApplicationDeployment;
@@ -29,20 +37,37 @@ export default function Dashboard() {
     fetchDeployments();
   }, [fetchDeployments, namespace]);
 
-  const handleScale = async (app: ApplicationDeployment) => {
-    const reps = window.prompt(`Enter new replicas for ${app.name}`, app.replicas.toString());
-    if (reps !== null) {
-      const n = parseInt(reps, 10);
-      if (!isNaN(n) && n >= 0) {
-        await scale(app.name, n);
-      }
+  useK8sWatch(namespace, (event) => {
+    if (event.type === 'deployment') {
+      fetchDeployments();
     }
+  });
+
+  const handleScale = async (app: ApplicationDeployment) => {
+    setInputAction({ type: 'scale', app });
   };
 
   const handleUpdateImage = async (app: ApplicationDeployment) => {
-    const img = window.prompt(`Enter new image for ${app.name}`, app.image);
-    if (img) {
-      await updateImage(app.name, img);
+    setInputAction({ type: 'image', app });
+  };
+
+  const handleInputConfirm = async (value: string) => {
+    if (!inputAction) return;
+    try {
+      if (inputAction.type === 'scale') {
+        const n = parseInt(value, 10);
+        if (!isNaN(n) && n >= 0) {
+          await scale(inputAction.app.name, n);
+        }
+      } else if (inputAction.type === 'image') {
+        if (value.trim()) {
+          await updateImage(inputAction.app.name, value.trim());
+        }
+      }
+    } catch (err: any) {
+      alert(err.message || `Failed to update ${inputAction.type}`);
+    } finally {
+      setInputAction(null);
     }
   };
 
@@ -178,6 +203,7 @@ export default function Dashboard() {
               onStop={handleStop}
               onRestart={handleRestart}
               onRollback={handleRollback}
+              onViewYaml={setYamlApp}
             />
           ))}
         </div>
@@ -197,6 +223,10 @@ export default function Dashboard() {
         pod={terminalPod}
         onClose={() => setTerminalPod(null)}
       />
+      <YamlModal
+        app={yamlApp}
+        onClose={() => setYamlApp(null)}
+      />
       <ConfirmDialog
         isOpen={!!confirmAction}
         title={confirmAction ? `${confirmAction.type.charAt(0).toUpperCase() + confirmAction.type.slice(1)} Application` : ''}
@@ -205,6 +235,15 @@ export default function Dashboard() {
         onCancel={() => setConfirmAction(null)}
         confirmText={confirmAction ? confirmAction.type.charAt(0).toUpperCase() + confirmAction.type.slice(1) : 'Confirm'}
         isDestructive={confirmAction?.type === 'delete' || confirmAction?.type === 'stop'}
+      />
+      <InputDialog
+        isOpen={!!inputAction}
+        title={inputAction?.type === 'scale' ? 'Scale Application' : 'Update Image'}
+        message={inputAction?.type === 'scale' ? 'Enter new replicas:' : 'Enter new image:'}
+        defaultValue={inputAction?.type === 'scale' ? inputAction.app.replicas.toString() : (inputAction?.app.image || '')}
+        inputType={inputAction?.type === 'scale' ? 'number' : 'text'}
+        onConfirm={handleInputConfirm}
+        onCancel={() => setInputAction(null)}
       />
     </div>
   );
