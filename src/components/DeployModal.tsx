@@ -941,7 +941,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Fixed Node</div>
                                       <div className="text-xs text-slate-500 mt-0.5 mb-2">Pin this service to a specific node (bypasses Master taints).</div>
                                       {svc.simpleStrategy === 'fixed' && (
-                                        <input type="text" placeholder="e.g. k8s-worker-1" className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={svc.fixedNodeName} onChange={(e) => updateService(sIdx, s => ({ ...s, fixedNodeName: e.target.value }))} onClick={(e) => e.preventDefault()} />
+                                        <input type="text" placeholder="e.g. k8s-worker-1" className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={svc.fixedNodeName} onChange={(e) => updateService(sIdx, s => ({ ...s, fixedNodeName: e.target.value }))} />
                                       )}
                                     </div>
                                   </label>
