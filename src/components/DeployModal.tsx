@@ -629,11 +629,11 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                     配置管理
                   </h3>
                   <ConfigMountSection
+                    namespace={formData.namespace}
                     configMounts={configMountList}
                     setConfigMounts={setConfigMountList}
                     secretMounts={secretMountList}
                     setSecretMounts={setSecretMountList}
-                    currentNamespace={formData.namespace}
                   />
                 </div>
 

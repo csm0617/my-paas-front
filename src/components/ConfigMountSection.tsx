@@ -4,23 +4,23 @@ import { ConfigMount, SecretMount, configMapApi, secretApi, K8sConfigMap, K8sSec
 import { useNamespaceStore } from '@/store/namespaceStore';
 
 interface Props {
+  namespace: string;
   configMounts: ConfigMount[];
   setConfigMounts: React.Dispatch<React.SetStateAction<ConfigMount[]>>;
   secretMounts: SecretMount[];
   setSecretMounts: React.Dispatch<React.SetStateAction<SecretMount[]>>;
-  currentNamespace: string;
 }
 
-export default function ConfigMountSection({ configMounts, setConfigMounts, secretMounts, setSecretMounts, currentNamespace }: Props) {
+export default function ConfigMountSection({ namespace, configMounts, setConfigMounts, secretMounts, setSecretMounts }: Props) {
   const [availableConfigMaps, setAvailableConfigMaps] = useState<K8sConfigMap[]>([]);
   const [availableSecrets, setAvailableSecrets] = useState<K8sSecret[]>([]);
 
   useEffect(() => {
-    if (!currentNamespace) return;
+    if (!namespace) return;
     
-    configMapApi.list(currentNamespace).then(setAvailableConfigMaps).catch(console.error);
-    secretApi.list(currentNamespace).then(setAvailableSecrets).catch(console.error);
-  }, [currentNamespace]);
+    configMapApi.list(namespace).then(setAvailableConfigMaps).catch(console.error);
+    secretApi.list(namespace).then(setAvailableSecrets).catch(console.error);
+  }, [namespace]);
 
   const getConfigMapKeys = (cmName: string) => {
     const cm = availableConfigMaps.find(c => c.name === cmName);
