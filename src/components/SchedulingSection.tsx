@@ -48,9 +48,17 @@ export default function SchedulingSection({
     'topology.kubernetes.io/region'
   ];
 
-  const COMMON_NODE_VALUES = [
-    'linux', 'windows', 'amd64', 'arm64'
-  ];
+  const COMMON_NODE_VALUES: Record<string, string[]> = {
+    'kubernetes.io/os': ['linux', 'windows', 'darwin'],
+    'kubernetes.io/arch': ['amd64', 'arm64', 'ppc64le', 's390x'],
+    'node.kubernetes.io/instance-type': ['t2.micro', 't3.medium', 'm5.large', 'c5.xlarge', 'standard-1', 'standard-2'],
+    'topology.kubernetes.io/zone': ['us-east-1a', 'us-east-1b', 'us-west-2a', 'eu-west-1a', 'ap-northeast-1a'],
+    'topology.kubernetes.io/region': ['us-east-1', 'us-west-2', 'eu-west-1', 'ap-northeast-1'],
+  };
+
+  const getValuesForKey = (key: string): string[] => {
+    return COMMON_NODE_VALUES[key] || [];
+  };
 
   const COMMON_TOLERATION_KEYS = [
     'node.kubernetes.io/not-ready',
@@ -170,9 +178,14 @@ export default function SchedulingSection({
       <datalist id="node-label-keys">
         {COMMON_NODE_LABELS.map(k => <option key={k} value={k} />)}
       </datalist>
-      <datalist id="node-label-values">
-        {COMMON_NODE_VALUES.map(v => <option key={v} value={v} />)}
-      </datalist>
+      
+      {/* Generate dynamic datalists for values based on specific keys */}
+      {Object.entries(COMMON_NODE_VALUES).map(([key, values]) => (
+        <datalist key={key} id={`node-label-values-${key.replace(/[^a-zA-Z0-9]/g, '-')}`}>
+          {values.map(v => <option key={v} value={v} />)}
+        </datalist>
+      ))}
+
       <datalist id="toleration-keys">
         {COMMON_TOLERATION_KEYS.map(k => <option key={k} value={k} />)}
       </datalist>
@@ -184,9 +197,9 @@ export default function SchedulingSection({
         <div className="space-y-2">
           {nodeSelectorRows.map((row, idx) => (
             <div key={idx} className="flex items-center space-x-2">
-              <input type="text" list="node-label-keys" placeholder="Key (e.g. disktype)" className="flex-1 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs" value={row.key} onChange={(e) => { const next = [...nodeSelectorRows]; next[idx].key = e.target.value; onNodeSelectorChange(next); }} />
+              <input type="text" list="node-label-keys" placeholder="Key (e.g. disktype)" className="flex-1 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs" value={row.key} onChange={(e) => { const next = [...nodeSelectorRows]; next[idx].key = e.target.value; next[idx].value = ''; onNodeSelectorChange(next); }} />
               <span className="text-slate-400">=</span>
-              <input type="text" list="node-label-values" placeholder="Value (e.g. ssd)" className="flex-1 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs" value={row.value} onChange={(e) => { const next = [...nodeSelectorRows]; next[idx].value = e.target.value; onNodeSelectorChange(next); }} />
+              <input type="text" list={row.key && getValuesForKey(row.key).length > 0 ? `node-label-values-${row.key.replace(/[^a-zA-Z0-9]/g, '-')}` : undefined} placeholder="Value (e.g. ssd)" className="flex-1 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs" value={row.value} onChange={(e) => { const next = [...nodeSelectorRows]; next[idx].value = e.target.value; onNodeSelectorChange(next); }} />
               <button type="button" onClick={() => onNodeSelectorChange(nodeSelectorRows.filter((_, i) => i !== idx))} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><X size={14} /></button>
             </div>
           ))}
