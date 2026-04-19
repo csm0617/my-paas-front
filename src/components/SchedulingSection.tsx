@@ -398,7 +398,6 @@ export default function SchedulingSection({
             </button>
           </div>
         </div>
-        </>
       )}
     </div>
   );
