@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { DeployCommand, ApplicationService, ContainerSpec, ConfigMount, SecretMount, PortSpec, api } from '@/lib/api';
+import { DeployCommand, ApplicationService, ContainerSpec, ConfigMount, SecretMount, PortSpec, api, K8sNode } from '@/lib/api';
 import { X, Plus, Trash2, AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Save, Network } from 'lucide-react';
 import ConfigMountSection from '@/components/ConfigMountSection';
 import SchedulingSection from '@/components/SchedulingSection';
@@ -119,6 +119,9 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
   const [nodePortStatus, setNodePortStatus] = useState<Record<number, { checking: boolean, available: boolean | null }>>({});
+  
+  const [nodeList, setNodeList] = useState<K8sNode[]>([]);
+  const [loadingNodes, setLoadingNodes] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -133,6 +136,16 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
     if (namespaces.length === 0 && !namespacesLoading) {
       fetchNamespaces();
     }
+    
+    // Fetch nodes for Fixed Node dropdown
+    setLoadingNodes(true);
+    api.getNodes().then(nodes => {
+      setNodeList(nodes);
+      setLoadingNodes(false);
+    }).catch(e => {
+      console.error('Failed to fetch nodes', e);
+      setLoadingNodes(false);
+    });
   }, [isOpen]);
 
   const toggleService = (id: string) => {
@@ -941,7 +954,28 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Fixed Node</div>
                                       <div className="text-xs text-slate-500 mt-0.5 mb-2">Pin this service to a specific node (bypasses Master taints).</div>
                                       {svc.simpleStrategy === 'fixed' && (
-                                        <input type="text" placeholder="e.g. k8s-worker-1" className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={svc.fixedNodeName} onChange={(e) => updateService(sIdx, s => ({ ...s, fixedNodeName: e.target.value }))} />
+                                        <div className="relative">
+                                          {loadingNodes ? (
+                                            <div className="text-xs text-slate-400 mt-2">Loading nodes...</div>
+                                          ) : (
+                                            <select
+                                              className="w-full mt-2 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
+                                              value={svc.fixedNodeName}
+                                              onChange={(e) => updateService(sIdx, s => ({ ...s, fixedNodeName: e.target.value }))}
+                                              onClick={(e) => e.preventDefault()}
+                                            >
+                                              <option value="" disabled>Select a Node...</option>
+                                              {nodeList.map(node => (
+                                                <option key={node.name} value={node.name}>
+                                                  {node.name} ({node.roles.join(', ') || 'worker'}) - {node.status}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          )}
+                                          <div className="absolute right-3 top-1/2 mt-1 -translate-y-1/2 pointer-events-none text-slate-400">
+                                            <ChevronDown size={14} />
+                                          </div>
+                                        </div>
                                       )}
                                     </div>
                                   </label>
