@@ -786,6 +786,14 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                       <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{Object.keys(commandPreview.secrets ?? {}).length}</dd>
                     </div>
                     <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500 dark:text-slate-400">Config Mounts</dt>
+                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{commandPreview.configMounts?.length || 0}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500 dark:text-slate-400">Secret Mounts</dt>
+                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{commandPreview.secretMounts?.length || 0}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500 dark:text-slate-400">HPA CPU</dt>
                       <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{commandPreview.targetCpuUtilization ?? '-'}</dd>
                     </div>
