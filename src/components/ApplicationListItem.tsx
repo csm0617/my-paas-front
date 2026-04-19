@@ -110,9 +110,6 @@ export default function ApplicationListItem({
           <button onClick={() => onViewYaml(app)} className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors" title="View YAML">
             <FileCode size={16} />
           </button>
-          <button onClick={() => onViewEvents(app)} className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors" title="Events">
-            <ListOrdered size={16} />
-          </button>
           <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1"></div>
           <button
             onClick={() => setExpanded(!expanded)}
@@ -141,6 +138,7 @@ export default function ApplicationListItem({
                 onRollback={onRollback}
                 onViewLogs={onViewLogs}
                 onOpenTerminal={onOpenTerminal}
+                onViewEvents={onViewEvents}
               />
             ))}
           </div>
@@ -158,7 +156,8 @@ function ServiceSubCard({
   onRestart,
   onRollback,
   onViewLogs,
-  onOpenTerminal
+  onOpenTerminal,
+  onViewEvents
 }: {
   app: Application;
   svc: ApplicationService;
@@ -168,6 +167,7 @@ function ServiceSubCard({
   onRollback: Props['onRollback'];
   onViewLogs: Props['onViewLogs'];
   onOpenTerminal: Props['onOpenTerminal'];
+  onViewEvents: Props['onViewEvents'];
 }) {
   const [pods, setPods] = useState<Pod[]>([]);
   const [loadingPods, setLoadingPods] = useState(false);
@@ -299,6 +299,9 @@ function ServiceSubCard({
                   </button>
                   <button onClick={() => onOpenTerminal(pod)} className="p-1.5 text-slate-500 hover:text-blue-500 hover:bg-blue-50 rounded-md" title="Terminal">
                     <TerminalSquare size={14} />
+                  </button>
+                  <button onClick={() => onViewEvents(app)} className="p-1.5 text-slate-500 hover:text-blue-500 hover:bg-blue-50 rounded-md" title="Events">
+                    <ListOrdered size={14} />
                   </button>
                 </div>
               </div>

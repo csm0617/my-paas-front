@@ -122,13 +122,6 @@ export default function ApplicationCard({
             <FileCode size={18} />
           </button>
           <button
-            onClick={() => onViewEvents(app)}
-            className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-            title="Events"
-          >
-            <ListOrdered size={18} />
-          </button>
-          <button
             onClick={() => setExpanded(!expanded)}
             className={`flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg transition-colors ${expanded ? 'text-blue-600 bg-blue-50 border-blue-200' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
             title={expanded ? "Hide Services" : "Show Services"}
@@ -157,6 +150,7 @@ export default function ApplicationCard({
                 onRollback={onRollback}
                 onViewLogs={onViewLogs}
                 onOpenTerminal={onOpenTerminal}
+                onViewEvents={onViewEvents}
               />
             ))}
           </div>
@@ -174,7 +168,8 @@ function ServiceSubCard({
   onRestart,
   onRollback,
   onViewLogs,
-  onOpenTerminal
+  onOpenTerminal,
+  onViewEvents
 }: {
   app: Application;
   svc: ApplicationService;
@@ -184,6 +179,7 @@ function ServiceSubCard({
   onRollback: Props['onRollback'];
   onViewLogs: Props['onViewLogs'];
   onOpenTerminal: Props['onOpenTerminal'];
+  onViewEvents: Props['onViewEvents'];
 }) {
   const [pods, setPods] = useState<Pod[]>([]);
   const [loadingPods, setLoadingPods] = useState(false);
@@ -312,6 +308,9 @@ function ServiceSubCard({
                   </button>
                   <button onClick={() => onOpenTerminal(pod)} className="p-0.5 text-slate-400 hover:text-blue-500" title="Terminal">
                     <TerminalSquare size={12} />
+                  </button>
+                  <button onClick={() => onViewEvents(app)} className="p-0.5 text-slate-400 hover:text-blue-500" title="Events">
+                    <ListOrdered size={12} />
                   </button>
                 </div>
               </div>
