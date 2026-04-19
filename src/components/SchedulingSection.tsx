@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
 import { Plus, X } from 'lucide-react';
-import { api } from '@/lib/api';
 
 interface TolerationUI {
   id: string;
@@ -39,66 +38,6 @@ export default function SchedulingSection({
   tolerationsJson, onTolerationsChange
 }: Props) {
   
-  const [mode, setMode] = useState<'simple' | 'advanced'>('simple');
-  const [availableNodes, setAvailableNodes] = useState<string[]>([]);
-  const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
-
-  useEffect(() => {
-    api.getNodes().then(setAvailableNodes).catch(console.error);
-  }, []);
-
-  // Reverse parse to determine if we should be in simple mode on mount
-  useEffect(() => {
-    if (!affinityJson && !tolerationsJson && nodeSelectorRows.length === 0) {
-      setMode('simple');
-      return;
-    }
-    
-    try {
-      const parsed = JSON.parse(affinityJson);
-      const req = parsed?.nodeAffinity?.requiredDuringSchedulingIgnoredDuringExecution?.nodeSelectorTerms?.[0]?.matchExpressions?.[0];
-      if (
-        req && req.key === 'kubernetes.io/hostname' && req.operator === 'In' &&
-        !parsed.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution &&
-        !tolerationsJson && nodeSelectorRows.length === 0
-      ) {
-        setSelectedNodes(req.values || []);
-        setMode('simple');
-      } else {
-        setMode('advanced');
-      }
-    } catch {
-      setMode('advanced');
-    }
-  }, []); // Only run once on mount
-
-  // Sync simple mode state to parent
-  useEffect(() => {
-    if (mode !== 'simple') return;
-    
-    if (selectedNodes.length === 0) {
-      onAffinityChange('');
-      onTolerationsChange('');
-      onNodeSelectorChange([]);
-      return;
-    }
-    
-    const nodeAffinity = {
-      requiredDuringSchedulingIgnoredDuringExecution: {
-        nodeSelectorTerms: [{
-          matchExpressions: [{
-            key: 'kubernetes.io/hostname',
-            operator: 'In',
-            values: selectedNodes
-          }]
-        }]
-      }
-    };
-    onAffinityChange(JSON.stringify({ nodeAffinity }));
-    onTolerationsChange('');
-    onNodeSelectorChange([]);
-  }, [selectedNodes, mode]);
-
   // Standard K8s labels and taints for datalists
   const NODE_LABEL_MAPPING: Record<string, string[]> = {
     'kubernetes.io/os': ['linux', 'windows'],
@@ -236,33 +175,7 @@ export default function SchedulingSection({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-          <button type="button" onClick={() => setMode('simple')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === 'simple' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Simple</button>
-          <button type="button" onClick={() => setMode('advanced')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === 'advanced' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Advanced</button>
-        </div>
-      </div>
-
-      {mode === 'simple' ? (
-        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Target Nodes</label>
-          <p className="text-xs text-slate-500 mb-3">Select specific nodes to schedule this service on. Leave empty to let Kubernetes decide.</p>
-          <div className="flex flex-wrap gap-2">
-            {availableNodes.map(node => (
-              <label key={node} className={`flex items-center space-x-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${selectedNodes.includes(node) ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50'}`}>
-                <input type="checkbox" className="rounded text-blue-500" checked={selectedNodes.includes(node)} onChange={(e) => {
-                  if (e.target.checked) setSelectedNodes([...selectedNodes, node]);
-                  else setSelectedNodes(selectedNodes.filter(n => n !== node));
-                }} />
-                <span className="text-sm font-mono">{node}</span>
-              </label>
-            ))}
-            {availableNodes.length === 0 && <span className="text-xs text-slate-400">Loading nodes...</span>}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <datalist id="node-label-keys">
+      <datalist id="node-label-keys">
         {COMMON_NODE_LABELS.map(k => <option key={k} value={k} />)}
       </datalist>
       <datalist id="node-label-values">
@@ -398,8 +311,7 @@ export default function SchedulingSection({
             </button>
           </div>
         </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

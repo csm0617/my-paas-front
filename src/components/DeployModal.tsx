@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { DeployCommand, ApplicationService, ContainerSpec, ConfigMount, SecretMount, PortSpec, api } from '@/lib/api';
-import { X, Plus, Trash2, AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Save } from 'lucide-react';
+import { X, Plus, Trash2, AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Save, Network } from 'lucide-react';
 import ConfigMountSection from '@/components/ConfigMountSection';
 import SchedulingSection from '@/components/SchedulingSection';
 import { useNamespaceStore } from '@/store/namespaceStore';
@@ -47,6 +47,9 @@ interface ServiceState {
   serviceType: string;
   enableIngress: boolean;
   ingressDomain: string;
+  schedulingMode: 'simple' | 'advanced';
+  simpleStrategy: 'any' | 'fixed' | 'ha';
+  fixedNodeName: string;
   nodeSelectorRows: { key: string; value: string }[];
   affinityJson: string;
   tolerationsJson: string;
@@ -89,6 +92,9 @@ const initialService = (): ServiceState => ({
   serviceType: 'ClusterIP',
   enableIngress: false,
   ingressDomain: '',
+  schedulingMode: 'simple',
+  simpleStrategy: 'any',
+  fixedNodeName: '',
   nodeSelectorRows: [],
   affinityJson: '',
   tolerationsJson: '',
@@ -187,45 +193,92 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
       name: formState.name,
       namespace: formState.namespace,
       description: formState.description,
-      services: formState.services.map(s => ({
-        name: s.name,
-        replicas: s.replicas,
-        maxReplicas: s.maxReplicas,
-        targetCpuUtilization: s.targetCpuUtilization,
-        targetMemoryUtilization: s.targetMemoryUtilization,
-        enableService: s.enableService,
-        serviceType: s.serviceType,
-        enableIngress: s.enableIngress,
-        ingressDomain: s.ingressDomain,
-        nodeSelector: toMap(s.nodeSelectorRows),
-        affinityJson: s.affinityJson,
-        tolerationsJson: s.tolerationsJson,
-        containers: s.containers.map(c => {
-          const mainPort = c.ports[0]?.port;
-          return {
-            name: c.name,
-            image: c.image,
-            port: mainPort,
-            ports: c.ports.map(p => ({
-              port: p.port,
-              protocol: p.protocol,
-              enableNodePort: p.enableNodePort,
-              nodePort: p.nodePort
-            })),
-            env: toMap(c.envList),
-            configs: toMap(c.configList),
-            secrets: toMap(c.secretList),
-            configMounts: c.configMounts.filter(cm => cm.configMapName && cm.mountPath && (!cm.subPath || cm.key)),
-            secretMounts: c.secretMounts.filter(sm => sm.secretName && sm.mountPath && (!sm.subPath || sm.key)),
-            livenessProbe: mainPort ? { path: '/healthz', port: mainPort, initialDelaySeconds: 15, periodSeconds: 10 } : undefined,
-            readinessProbe: mainPort ? { path: '/ready', port: mainPort, initialDelaySeconds: 5, periodSeconds: 10 } : undefined,
-            requestsCpu: c.requestsCpu || undefined,
-            requestsMemory: c.requestsMemory || undefined,
-            limitsCpu: c.limitsCpu || undefined,
-            limitsMemory: c.limitsMemory || undefined,
-          };
-        })
-      }))
+      services: formState.services.map(s => {
+        let finalNodeSelectorRows = s.nodeSelectorRows;
+        let finalAffinityJson = s.affinityJson;
+        let finalTolerationsJson = s.tolerationsJson;
+
+        if (s.schedulingMode === 'simple') {
+          finalNodeSelectorRows = [];
+          finalAffinityJson = '';
+          finalTolerationsJson = '';
+
+          if (s.simpleStrategy === 'fixed' && s.fixedNodeName) {
+            finalAffinityJson = JSON.stringify({
+              nodeAffinity: {
+                requiredDuringSchedulingIgnoredDuringExecution: {
+                  nodeSelectorTerms: [{
+                    matchExpressions: [{
+                      key: 'kubernetes.io/hostname',
+                      operator: 'In',
+                      values: [s.fixedNodeName]
+                    }]
+                  }]
+                }
+              }
+            });
+            finalTolerationsJson = JSON.stringify([{ operator: 'Exists' }]);
+          } else if (s.simpleStrategy === 'ha') {
+            finalAffinityJson = JSON.stringify({
+              podAntiAffinity: {
+                preferredDuringSchedulingIgnoredDuringExecution: [{
+                  weight: 100,
+                  podAffinityTerm: {
+                    labelSelector: {
+                      matchExpressions: [{
+                        key: 'paas.csm.com/service',
+                        operator: 'In',
+                        values: [s.name]
+                      }]
+                    },
+                    topologyKey: 'kubernetes.io/hostname'
+                  }
+                }]
+              }
+            });
+          }
+        }
+
+        return {
+          name: s.name,
+          replicas: s.replicas,
+          maxReplicas: s.maxReplicas,
+          targetCpuUtilization: s.targetCpuUtilization,
+          targetMemoryUtilization: s.targetMemoryUtilization,
+          enableService: s.enableService,
+          serviceType: s.serviceType,
+          enableIngress: s.enableIngress,
+          ingressDomain: s.ingressDomain,
+          nodeSelector: toMap(finalNodeSelectorRows),
+          affinityJson: finalAffinityJson,
+          tolerationsJson: finalTolerationsJson,
+          containers: s.containers.map(c => {
+            const mainPort = c.ports[0]?.port;
+            return {
+              name: c.name,
+              image: c.image,
+              port: mainPort,
+              ports: c.ports.map(p => ({
+                port: p.port,
+                protocol: p.protocol,
+                enableNodePort: p.enableNodePort,
+                nodePort: p.nodePort
+              })),
+              env: toMap(c.envList),
+              configs: toMap(c.configList),
+              secrets: toMap(c.secretList),
+              configMounts: c.configMounts.filter(cm => cm.configMapName && cm.mountPath && (!cm.subPath || cm.key)),
+              secretMounts: c.secretMounts.filter(sm => sm.secretName && sm.mountPath && (!sm.subPath || sm.key)),
+              livenessProbe: mainPort ? { path: '/healthz', port: mainPort, initialDelaySeconds: 15, periodSeconds: 10 } : undefined,
+              readinessProbe: mainPort ? { path: '/ready', port: mainPort, initialDelaySeconds: 5, periodSeconds: 10 } : undefined,
+              requestsCpu: c.requestsCpu || undefined,
+              requestsMemory: c.requestsMemory || undefined,
+              limitsCpu: c.limitsCpu || undefined,
+              limitsMemory: c.limitsMemory || undefined,
+            };
+          })
+        };
+      })
     };
   };
 
@@ -841,16 +894,77 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                             </div>
                             
                             {/* Scheduling */}
-                            <div>
-                               <label className="block text-xs font-medium text-slate-500 mb-2">Scheduling</label>
-                               <SchedulingSection
-                                 nodeSelectorRows={svc.nodeSelectorRows}
-                                 onNodeSelectorChange={(rows) => updateService(sIdx, s => ({ ...s, nodeSelectorRows: rows }))}
-                                 affinityJson={svc.affinityJson}
-                                 onAffinityChange={(json) => updateService(sIdx, s => ({ ...s, affinityJson: json }))}
-                                 tolerationsJson={svc.tolerationsJson}
-                                 onTolerationsChange={(json) => updateService(sIdx, s => ({ ...s, tolerationsJson: json }))}
-                               />
+                            <div className="bg-slate-50 dark:bg-slate-900/30 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
+                              <div className="flex items-center justify-between mb-4">
+                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                  <Network size={16} className="text-blue-500" />
+                                  Scheduling Strategy
+                                </label>
+                                <div className="flex bg-slate-200 dark:bg-slate-800 p-0.5 rounded-lg">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (svc.schedulingMode === 'advanced') {
+                                         if (!confirm('Switching to Simple mode will clear your advanced scheduling rules. Continue?')) return;
+                                         updateService(sIdx, s => ({ ...s, schedulingMode: 'simple', nodeSelectorRows: [], affinityJson: '', tolerationsJson: '' }));
+                                      }
+                                    }}
+                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${svc.schedulingMode === 'simple' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                  >
+                                    Simple
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateService(sIdx, s => ({ ...s, schedulingMode: 'advanced' }))}
+                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${svc.schedulingMode === 'advanced' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                  >
+                                    Advanced
+                                  </button>
+                                </div>
+                              </div>
+
+                              {svc.schedulingMode === 'simple' ? (
+                                <div className="space-y-3">
+                                  {/* Any Node */}
+                                  <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${svc.simpleStrategy === 'any' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
+                                    <input type="radio" name={`strategy-${sIdx}`} className="mt-1" checked={svc.simpleStrategy === 'any'} onChange={() => updateService(sIdx, s => ({ ...s, simpleStrategy: 'any' }))} />
+                                    <div className="ml-3">
+                                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Any Worker Node (Default)</div>
+                                      <div className="text-xs text-slate-500 mt-0.5">Automatically schedule on any available node.</div>
+                                    </div>
+                                  </label>
+
+                                  {/* Fixed Node */}
+                                  <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${svc.simpleStrategy === 'fixed' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
+                                    <input type="radio" name={`strategy-${sIdx}`} className="mt-1" checked={svc.simpleStrategy === 'fixed'} onChange={() => updateService(sIdx, s => ({ ...s, simpleStrategy: 'fixed' }))} />
+                                    <div className="ml-3 w-full pr-4">
+                                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Fixed Node</div>
+                                      <div className="text-xs text-slate-500 mt-0.5 mb-2">Pin this service to a specific node (bypasses Master taints).</div>
+                                      {svc.simpleStrategy === 'fixed' && (
+                                        <input type="text" placeholder="e.g. k8s-worker-1" className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={svc.fixedNodeName} onChange={(e) => updateService(sIdx, s => ({ ...s, fixedNodeName: e.target.value }))} onClick={(e) => e.preventDefault()} />
+                                      )}
+                                    </div>
+                                  </label>
+
+                                  {/* High Availability */}
+                                  <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${svc.simpleStrategy === 'ha' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
+                                    <input type="radio" name={`strategy-${sIdx}`} className="mt-1" checked={svc.simpleStrategy === 'ha'} onChange={() => updateService(sIdx, s => ({ ...s, simpleStrategy: 'ha' }))} />
+                                    <div className="ml-3">
+                                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">High Availability (Anti-Affinity)</div>
+                                      <div className="text-xs text-slate-500 mt-0.5">Spread replicas across different nodes to prevent single-point-of-failure.</div>
+                                    </div>
+                                  </label>
+                                </div>
+                              ) : (
+                                <SchedulingSection
+                                  nodeSelectorRows={svc.nodeSelectorRows}
+                                  onNodeSelectorChange={(rows) => updateService(sIdx, s => ({ ...s, nodeSelectorRows: rows }))}
+                                  affinityJson={svc.affinityJson}
+                                  onAffinityChange={(json) => updateService(sIdx, s => ({ ...s, affinityJson: json }))}
+                                  tolerationsJson={svc.tolerationsJson}
+                                  onTolerationsChange={(json) => updateService(sIdx, s => ({ ...s, tolerationsJson: json }))}
+                                />
+                              )}
                             </div>
 
                           </div>
