@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { DeployCommand, api } from '@/lib/api';
+import { DeployCommand, ConfigMount, SecretMount, api } from '@/lib/api';
 import { X, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import ResourcesSchedulingSection from '@/components/ResourcesSchedulingSection';
+import ConfigMountSection from '@/components/ConfigMountSection';
 import { useNamespaceStore } from '@/store/namespaceStore';
 import { useAppStore } from '@/store/appStore';
 
@@ -37,6 +38,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
   const [envList, setEnvList] = useState<{ key: string; value: string }[]>([]);
   const [configList, setConfigList] = useState<{ key: string; value: string }[]>([]);
   const [secretList, setSecretList] = useState<{ key: string; value: string }[]>([]);
+  const [configMountList, setConfigMountList] = useState<ConfigMount[]>([]);
+  const [secretMountList, setSecretMountList] = useState<SecretMount[]>([]);
   const [nodePortStatus, setNodePortStatus] = useState<Record<number, { checking: boolean, available: boolean | null }>>({});
 
   useEffect(() => {
@@ -106,12 +109,14 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
       env: toMap(envList),
       configs: toMap(configList),
       secrets: toMap(secretList),
+      configMounts: configMountList,
+      secretMounts: secretMountList,
       livenessProbe: { path: '/healthz', port: formData.ports[0].port, initialDelaySeconds: 15, periodSeconds: 10 },
       readinessProbe: { path: '/ready', port: formData.ports[0].port, initialDelaySeconds: 5, periodSeconds: 10 },
     };
   };
 
-  const commandPreview = useMemo(() => buildCommand(), [formData, envList, configList, secretList]);
+  const commandPreview = useMemo(() => buildCommand(), [formData, envList, configList, secretList, configMountList, secretMountList]);
 
   if (!isOpen) return null;
 
@@ -619,7 +624,19 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                   </div>
                 </div>
 
-                <div>
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 mb-4">
+                    配置管理
+                  </h3>
+                  <ConfigMountSection
+                    configMounts={configMountList}
+                    setConfigMounts={setConfigMountList}
+                    secretMounts={secretMountList}
+                    setSecretMounts={setSecretMountList}
+                  />
+                </div>
+
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
                   <div className="flex items-center justify-between mb-4">
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">ConfigMap Entries</label>
                     <button

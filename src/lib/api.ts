@@ -59,6 +59,22 @@ export interface PortSpec {
   nodePort?: number;
 }
 
+export interface ConfigMount {
+  mountPath: string;
+  subPath: boolean;
+  configMapName: string;
+  key: string;
+  defaultMode?: number;
+}
+
+export interface SecretMount {
+  mountPath: string;
+  subPath: boolean;
+  secretName: string;
+  key: string;
+  defaultMode?: number;
+}
+
 export interface DeployCommand {
   name: string;
   namespace: string;
@@ -70,6 +86,8 @@ export interface DeployCommand {
   env: EnvVar;
   configs?: EnvVar;
   secrets?: EnvVar;
+  configMounts?: ConfigMount[];
+  secretMounts?: SecretMount[];
   livenessProbe?: ProbeSpec;
   readinessProbe?: ProbeSpec;
   targetCpuUtilization?: number;
