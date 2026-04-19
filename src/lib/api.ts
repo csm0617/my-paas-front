@@ -313,6 +313,11 @@ export const api = {
     });
     return res.data.data;
   },
+
+  getNodes: async (): Promise<K8sNode[]> => {
+    const res = await apiClient.get<Result<K8sNode[]>>(`/cluster/nodes`);
+    return res.data.data;
+  },
 };
 
 export interface ServicePort {
