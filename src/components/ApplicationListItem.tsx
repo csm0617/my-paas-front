@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { ApplicationDeployment, eventApi, K8sEvent, podApi, Pod } from '@/lib/api';
-import { Activity, Box, Cpu, Trash2, Edit3, TerminalSquare, FileText, ArrowUpCircle, Play, Square, RotateCw, Undo2, ChevronDown, ChevronUp, FileCode } from 'lucide-react';
+import { Activity, Box, Cpu, Trash2, Edit3, TerminalSquare, FileText, ArrowUpCircle, Play, Square, RotateCw, Undo2, ChevronDown, ChevronUp, FileCode, ListOrdered } from 'lucide-react';
 import { useK8sWatch } from '@/hooks/useK8sWatch';
 
 interface Props {
@@ -288,6 +288,15 @@ export default function ApplicationListItem({
                       <button onClick={() => onOpenTerminal(pod)} className="p-1.5 text-slate-500 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors" title="Terminal">
                         <TerminalSquare size={14} />
                       </button>
+                      <button
+                        onClick={() => {
+                          if (!showEvents) setShowEvents(true);
+                        }}
+                        className="p-1.5 text-slate-500 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
+                        title="Events"
+                      >
+                        <ListOrdered size={14} />
+                      </button>
                     </div>
                   </div>
                 );
@@ -296,31 +305,24 @@ export default function ApplicationListItem({
           )}
 
           <div className="mt-4 border-t border-slate-200 dark:border-slate-700/60 pt-4">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => setShowEvents(v => !v)}
-                className="flex items-center space-x-2 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider hover:text-slate-800"
-                title={showEvents ? 'Hide Events' : 'Show Events'}
-              >
-                {showEvents ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                <span>Events</span>
-              </button>
-              <button
-                onClick={() => {
-                  if (!showEvents) setShowEvents(true);
-                  fetchEvents();
-                }}
-                className="flex items-center space-x-1 text-xs text-slate-500 hover:text-slate-700"
-                disabled={loadingEvents}
-                title="Refresh Events"
-              >
-                <RotateCw size={14} className={loadingEvents ? 'animate-spin' : ''} />
-                <span>刷新</span>
-              </button>
-            </div>
-
             {showEvents && (
               <div className="mt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Events</h4>
+                  <button
+                    onClick={() => {
+                      if (!showEvents) setShowEvents(true);
+                      fetchEvents();
+                    }}
+                    className="flex items-center space-x-1 text-xs text-slate-500 hover:text-slate-700"
+                    disabled={loadingEvents}
+                    title="Refresh Events"
+                  >
+                    <RotateCw size={14} className={loadingEvents ? 'animate-spin' : ''} />
+                    <span>刷新</span>
+                  </button>
+                </div>
+
                 {eventsError && (
                   <div className="mb-2 flex items-center justify-between bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-xs">
                     <span className="truncate" title={eventsError}>加载 Events 失败：{eventsError}</span>
