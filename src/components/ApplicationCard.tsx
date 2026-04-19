@@ -15,6 +15,7 @@ interface Props {
   onRestart: (app: ApplicationDeployment) => void;
   onRollback: (app: ApplicationDeployment) => void;
   onViewYaml: (app: ApplicationDeployment) => void;
+  onViewEvents: (app: ApplicationDeployment) => void;
 }
 
 export default function ApplicationCard({
@@ -29,6 +30,7 @@ export default function ApplicationCard({
   onRestart,
   onRollback,
   onViewYaml,
+  onViewEvents,
 }: Props) {
   const isRunning = app.status === 'RUNNING';
   const isFailed = app.status === 'FAILED';
@@ -327,9 +329,7 @@ export default function ApplicationCard({
                           <TerminalSquare size={14} />
                         </button>
                         <button
-                          onClick={() => {
-                            if (!showEvents) setShowEvents(true);
-                          }}
+                          onClick={() => onViewEvents(app)}
                           className="p-1 text-slate-500 hover:text-blue-500"
                           title="Events"
                         >
@@ -339,75 +339,6 @@ export default function ApplicationCard({
                     </div>
                   );
                 })}
-              </div>
-            )}
-
-            {showEvents && (
-              <div className="mt-3 border-t border-slate-200 dark:border-slate-700/60 pt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Events</h4>
-                  <button
-                    onClick={fetchEvents}
-                    className="flex items-center space-x-1 text-xs text-slate-500 hover:text-slate-700"
-                    disabled={loadingEvents}
-                    title="Refresh Events"
-                  >
-                    <RotateCw size={14} className={loadingEvents ? 'animate-spin' : ''} />
-                    <span>刷新</span>
-                  </button>
-                </div>
-
-                {eventsError && (
-                  <div className="mb-2 flex items-center justify-between bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-xs">
-                    <span className="truncate" title={eventsError}>加载 Events 失败：{eventsError}</span>
-                    <button onClick={fetchEvents} className="ml-3 text-red-700 hover:text-red-900 font-medium" disabled={loadingEvents}>
-                      重试
-                    </button>
-                  </div>
-                )}
-
-                {loadingEvents ? (
-                  <div className="text-sm text-slate-400">Loading events...</div>
-                ) : relatedEvents.length === 0 ? (
-                  <div className="text-sm text-slate-400">No events found.</div>
-                ) : (
-                  <div className="space-y-2">
-                    {relatedEvents.map(e => {
-                      const key = `${e.namespace || app.namespace}:${e.name || ''}:${e.lastTimestamp || ''}:${e.reason || ''}`;
-                      const type = (e.type || '').toLowerCase();
-                      const typeCls = type === 'warning' ? 'bg-amber-100 text-amber-800' : type === 'normal' ? 'bg-slate-200 text-slate-700' : 'bg-slate-200 text-slate-700';
-                      const reason = e.reason || '-';
-                      const message = e.message || '';
-                      const time = e.lastTimestamp || '';
-                      const involved = `${e.involvedObjectKind || 'Object'}/${e.involvedObjectName || '-'}`;
-                      return (
-                        <div key={key} className="bg-white/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${typeCls}`}>{e.type || 'Unknown'}</span>
-                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title={reason}>{reason}</span>
-                              </div>
-                              {message && (
-                                <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-300 truncate" title={message}>
-                                  {message}
-                                </div>
-                              )}
-                            </div>
-                            {time && (
-                              <div className="text-[10px] text-slate-400 whitespace-nowrap" title={time}>
-                                {time}
-                              </div>
-                            )}
-                          </div>
-                          <div className="mt-1 text-[10px] text-slate-400 truncate" title={involved}>
-                            {involved}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             )}
           </div>

@@ -7,6 +7,7 @@ import DeployModal from '@/components/DeployModal';
 import LogsDrawer from '@/components/LogsDrawer';
 import TerminalDrawer from '@/components/TerminalDrawer';
 import YamlModal from '@/components/YamlModal';
+import EventsModal from '@/components/EventsModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import InputDialog from '@/components/InputDialog';
 import { ApplicationDeployment, DeployCommand, Pod } from '@/lib/api';
@@ -21,6 +22,7 @@ export default function Dashboard() {
   const [logsPod, setLogsPod] = useState<Pod | null>(null);
   const [terminalPod, setTerminalPod] = useState<Pod | null>(null);
   const [yamlApp, setYamlApp] = useState<ApplicationDeployment | null>(null);
+  const [eventsApp, setEventsApp] = useState<ApplicationDeployment | null>(null);
   const [inputAction, setInputAction] = useState<{
     type: 'scale' | 'image';
     app: ApplicationDeployment;
@@ -224,6 +226,7 @@ export default function Dashboard() {
               onRestart={handleRestart}
               onRollback={handleRollback}
               onViewYaml={setYamlApp}
+              onViewEvents={setEventsApp}
             />
           ))}
         </div>
@@ -243,6 +246,7 @@ export default function Dashboard() {
               onRestart={handleRestart}
               onRollback={handleRollback}
               onViewYaml={setYamlApp}
+              onViewEvents={setEventsApp}
             />
           ))}
         </div>
@@ -265,6 +269,11 @@ export default function Dashboard() {
       <YamlModal
         app={yamlApp}
         onClose={() => setYamlApp(null)}
+      />
+      <EventsModal
+        app={eventsApp}
+        isOpen={!!eventsApp}
+        onClose={() => setEventsApp(null)}
       />
       <ConfirmDialog
         isOpen={!!confirmAction}
