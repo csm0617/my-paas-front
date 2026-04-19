@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { ConfigMount, SecretMount } from '@/lib/api';
+import { ConfigMount, SecretMount, configMapApi, secretApi, K8sConfigMap, K8sSecret } from '@/lib/api';
+import { useNamespaceStore } from '@/store/namespaceStore';
 
 interface Props {
   configMounts: ConfigMount[];
@@ -10,6 +11,26 @@ interface Props {
 }
 
 export default function ConfigMountSection({ configMounts, setConfigMounts, secretMounts, setSecretMounts }: Props) {
+  const { currentNamespace } = useNamespaceStore();
+  const [availableConfigMaps, setAvailableConfigMaps] = useState<K8sConfigMap[]>([]);
+  const [availableSecrets, setAvailableSecrets] = useState<K8sSecret[]>([]);
+
+  useEffect(() => {
+    if (!currentNamespace) return;
+    
+    configMapApi.list(currentNamespace).then(setAvailableConfigMaps).catch(console.error);
+    secretApi.list(currentNamespace).then(setAvailableSecrets).catch(console.error);
+  }, [currentNamespace]);
+
+  const getConfigMapKeys = (cmName: string) => {
+    const cm = availableConfigMaps.find(c => c.name === cmName);
+    return cm && cm.data ? Object.keys(cm.data) : [];
+  };
+
+  const getSecretKeys = (secretName: string) => {
+    const secret = availableSecrets.find(s => s.name === secretName);
+    return secret && secret.data ? Object.keys(secret.data) : [];
+  };
   const addConfigMount = () => {
     setConfigMounts([...configMounts, { mountPath: '', subPath: false, configMapName: '', key: '', defaultMode: 420 }]);
   };
@@ -98,23 +119,46 @@ export default function ConfigMountSection({ configMounts, setConfigMounts, secr
                       </select>
                     </td>
                     <td className="p-2">
-                      <input
-                        type="text"
-                        placeholder="ConfigMap Name"
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      <select
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                         value={mount.configMapName}
-                        onChange={(e) => updateConfigMount(i, 'configMapName', e.target.value)}
-                      />
+                        onChange={(e) => {
+                          const newName = e.target.value;
+                          const newKeys = getConfigMapKeys(newName);
+                          // Auto-select first key if switching config maps while subPath is true
+                          const newKey = mount.subPath && newKeys.length > 0 ? newKeys[0] : '';
+                          const newList = [...configMounts];
+                          newList[i] = { ...newList[i], configMapName: newName, key: newKey };
+                          setConfigMounts(newList);
+                        }}
+                      >
+                        <option value="" disabled>Select ConfigMap</option>
+                        {availableConfigMaps.map(cm => (
+                          <option key={cm.name} value={cm.name}>{cm.name}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="p-2">
-                      <input
-                        type="text"
-                        placeholder={mount.subPath ? "Key (e.g. config.yaml)" : "N/A"}
-                        disabled={!mount.subPath}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!mount.subPath ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600'}`}
-                        value={mount.key}
-                        onChange={(e) => updateConfigMount(i, 'key', e.target.value)}
-                      />
+                      {mount.subPath ? (
+                        <select
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                          value={mount.key}
+                          onChange={(e) => updateConfigMount(i, 'key', e.target.value)}
+                        >
+                          <option value="" disabled>Select File (Key)</option>
+                          {getConfigMapKeys(mount.configMapName).map(k => (
+                            <option key={k} value={k}>{k}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="N/A"
+                          disabled
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 opacity-50 cursor-not-allowed"
+                          value=""
+                        />
+                      )}
                     </td>
                     <td className="p-2">
                       <select
@@ -200,23 +244,46 @@ export default function ConfigMountSection({ configMounts, setConfigMounts, secr
                       </select>
                     </td>
                     <td className="p-2">
-                      <input
-                        type="text"
-                        placeholder="Secret Name"
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      <select
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                         value={mount.secretName}
-                        onChange={(e) => updateSecretMount(i, 'secretName', e.target.value)}
-                      />
+                        onChange={(e) => {
+                          const newName = e.target.value;
+                          const newKeys = getSecretKeys(newName);
+                          // Auto-select first key if switching secrets while subPath is true
+                          const newKey = mount.subPath && newKeys.length > 0 ? newKeys[0] : '';
+                          const newList = [...secretMounts];
+                          newList[i] = { ...newList[i], secretName: newName, key: newKey };
+                          setSecretMounts(newList);
+                        }}
+                      >
+                        <option value="" disabled>Select Secret</option>
+                        {availableSecrets.map(s => (
+                          <option key={s.name} value={s.name}>{s.name}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="p-2">
-                      <input
-                        type="text"
-                        placeholder={mount.subPath ? "Key (e.g. tls.crt)" : "N/A"}
-                        disabled={!mount.subPath}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!mount.subPath ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 opacity-50 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 border-slate-300 dark:border-slate-600'}`}
-                        value={mount.key}
-                        onChange={(e) => updateSecretMount(i, 'key', e.target.value)}
-                      />
+                      {mount.subPath ? (
+                        <select
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                          value={mount.key}
+                          onChange={(e) => updateSecretMount(i, 'key', e.target.value)}
+                        >
+                          <option value="" disabled>Select File (Key)</option>
+                          {getSecretKeys(mount.secretName).map(k => (
+                            <option key={k} value={k}>{k}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="N/A"
+                          disabled
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 opacity-50 cursor-not-allowed"
+                          value=""
+                        />
+                      )}
                     </td>
                     <td className="p-2">
                       <select

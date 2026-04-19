@@ -410,6 +410,35 @@ export const configMapApi = {
   }
 };
 
+export interface K8sSecret {
+  name: string;
+  namespace: string;
+  data: Record<string, string>;
+  creationTimestamp?: string;
+}
+
+export const secretApi = {
+  list: async (namespace: string): Promise<K8sSecret[]> => {
+    const res = await apiClient.get<Result<K8sSecret[]>>(`/namespaces/${namespace}/secrets`);
+    return res.data.data;
+  },
+  get: async (namespace: string, name: string): Promise<K8sSecret> => {
+    const res = await apiClient.get<Result<K8sSecret>>(`/namespaces/${namespace}/secrets/${name}`);
+    return res.data.data;
+  },
+  create: async (namespace: string, secret: { name: string; data: Record<string, string> }): Promise<K8sSecret> => {
+    const res = await apiClient.post<Result<K8sSecret>>(`/namespaces/${namespace}/secrets`, secret);
+    return res.data.data;
+  },
+  update: async (namespace: string, name: string, secret: { data: Record<string, string> }): Promise<K8sSecret> => {
+    const res = await apiClient.put<Result<K8sSecret>>(`/namespaces/${namespace}/secrets/${name}`, secret);
+    return res.data.data;
+  },
+  delete: async (namespace: string, name: string): Promise<void> => {
+    await apiClient.delete(`/namespaces/${namespace}/secrets/${name}`);
+  }
+};
+
 export interface K8sDeployment {
   name: string;
   namespace: string;
