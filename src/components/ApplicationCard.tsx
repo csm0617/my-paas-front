@@ -208,13 +208,6 @@ export default function ApplicationCard({
             <ArrowUpCircle size={16} />
             <span>Scale</span>
           </button>
-          <button
-            onClick={() => onUpdateImage(app)}
-            className="flex-1 flex items-center justify-center space-x-1 py-2 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
-          >
-            <Edit3 size={16} />
-            <span>Image</span>
-          </button>
         </div>
 
         <div className="flex flex-wrap gap-2 pt-2">
@@ -334,6 +327,13 @@ export default function ApplicationCard({
                           title="Events"
                         >
                           <ListOrdered size={14} />
+                        </button>
+                        <button
+                          onClick={() => onUpdateImage(app)}
+                          className="p-1 text-slate-500 hover:text-blue-500"
+                          title="Update Image"
+                        >
+                          <Edit3 size={14} />
                         </button>
                       </div>
                     </div>

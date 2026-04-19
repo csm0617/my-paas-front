@@ -201,9 +201,6 @@ export default function ApplicationListItem({
           <button onClick={() => onScale(app)} className="p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors" title="Scale">
             <ArrowUpCircle size={16} />
           </button>
-          <button onClick={() => onUpdateImage(app)} className="p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors" title="Update Image">
-            <Edit3 size={16} />
-          </button>
           {isStopped ? (
             <button onClick={() => onStart(app)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Start">
               <Play size={16} />
@@ -296,6 +293,13 @@ export default function ApplicationListItem({
                         title="Events"
                       >
                         <ListOrdered size={14} />
+                      </button>
+                      <button
+                        onClick={() => onUpdateImage(app)}
+                        className="p-1.5 text-slate-500 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
+                        title="Update Image"
+                      >
+                        <Edit3 size={14} />
                       </button>
                     </div>
                   </div>
