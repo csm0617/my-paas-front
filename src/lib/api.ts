@@ -246,6 +246,11 @@ export const eventApi = {
 };
 
 export const api = {
+  getNodes: async (): Promise<string[]> => {
+    const { data } = await apiClient.get<Result<string[]>>('/nodes/names');
+    return data.data || [];
+  },
+
   getDeployments: async (namespace: string): Promise<Application[]> => {
     const res = await apiClient.get<Result<Application[]>>(`/applications/deployments/${namespace}`);
     return res.data.data;
