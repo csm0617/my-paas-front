@@ -799,10 +799,22 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                               </div>
                                             </div>
                                             <div className="grid grid-cols-4 gap-2">
-                                              <input type="text" placeholder="Req CPU (e.g. 100m)" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.requestsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: e.target.value }))} />
-                                              <input type="text" placeholder="Req Mem (e.g. 128Mi)" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.requestsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsMemory: e.target.value }))} />
-                                              <input type="text" placeholder="Lim CPU (e.g. 500m)" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.limitsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsCpu: e.target.value }))} />
-                                              <input type="text" placeholder="Lim Mem (e.g. 256Mi)" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.limitsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsMemory: e.target.value }))} />
+                                              <div className="flex flex-col">
+                                                <label className="text-[10px] text-slate-400 mb-1">Request CPU</label>
+                                                <input type="text" placeholder="e.g. 100m" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.requestsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: e.target.value }))} />
+                                              </div>
+                                              <div className="flex flex-col">
+                                                <label className="text-[10px] text-slate-400 mb-1">Request Mem</label>
+                                                <input type="text" placeholder="e.g. 128Mi" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.requestsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsMemory: e.target.value }))} />
+                                              </div>
+                                              <div className="flex flex-col">
+                                                <label className="text-[10px] text-slate-400 mb-1">Limit CPU</label>
+                                                <input type="text" placeholder="e.g. 500m" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.limitsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsCpu: e.target.value }))} />
+                                              </div>
+                                              <div className="flex flex-col">
+                                                <label className="text-[10px] text-slate-400 mb-1">Limit Mem</label>
+                                                <input type="text" placeholder="e.g. 256Mi" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.limitsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsMemory: e.target.value }))} />
+                                              </div>
                                             </div>
                                           </div>
 
