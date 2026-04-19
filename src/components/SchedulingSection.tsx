@@ -121,11 +121,14 @@ export default function SchedulingSection({
   });
 
   // Sync state to parent JSON
+  // We use stringified versions of the dependencies to avoid deep equality issues that trigger infinite loops
+  const tolerationsStr = JSON.stringify(tolerations);
   useEffect(() => {
-    if (tolerations.length === 0) {
+    const parsedTols = JSON.parse(tolerationsStr) as TolerationUI[];
+    if (parsedTols.length === 0) {
       onTolerationsChange('');
     } else {
-      const mapped = tolerations.map(t => {
+      const mapped = parsedTols.map(t => {
         const res: any = { operator: t.operator };
         if (t.key) res.key = t.key;
         if (t.operator === 'Equal' && t.value) res.value = t.value;
@@ -135,20 +138,23 @@ export default function SchedulingSection({
       });
       onTolerationsChange(JSON.stringify(mapped));
     }
-  }, [tolerations, onTolerationsChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tolerationsStr]);
 
+  const affinityStr = JSON.stringify(affinity);
   useEffect(() => {
-    if (affinity.required.length === 0 && affinity.preferred.length === 0) {
+    const parsedAffinity = JSON.parse(affinityStr) as NodeAffinityUI;
+    if (parsedAffinity.required.length === 0 && parsedAffinity.preferred.length === 0) {
       onAffinityChange('');
       return;
     }
     
     const nodeAffinity: any = {};
     
-    if (affinity.required.length > 0) {
+    if (parsedAffinity.required.length > 0) {
       nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution = {
         nodeSelectorTerms: [{
-          matchExpressions: affinity.required.map(r => ({
+          matchExpressions: parsedAffinity.required.map(r => ({
             key: r.key,
             operator: r.operator,
             values: r.operator === 'Exists' || r.operator === 'DoesNotExist' ? undefined : r.values.split(',').map(v => v.trim()).filter(Boolean)
@@ -157,8 +163,8 @@ export default function SchedulingSection({
       };
     }
     
-    if (affinity.preferred.length > 0) {
-      nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution = affinity.preferred.map(p => ({
+    if (parsedAffinity.preferred.length > 0) {
+      nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution = parsedAffinity.preferred.map(p => ({
         weight: p.weight,
         preference: {
           matchExpressions: [{
@@ -171,7 +177,8 @@ export default function SchedulingSection({
     }
     
     onAffinityChange(JSON.stringify({ nodeAffinity }));
-  }, [affinity, onAffinityChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [affinityStr]);
 
   return (
     <div className="space-y-6">
@@ -258,7 +265,7 @@ export default function SchedulingSection({
                   <option value="In">In</option><option value="NotIn">NotIn</option><option value="Exists">Exists</option><option value="DoesNotExist">DoesNotExist</option><option value="Gt">Gt</option><option value="Lt">Lt</option>
                 </select>
                 {r.operator !== 'Exists' && r.operator !== 'DoesNotExist' && (
-                  <input type="text" list={r.key && getValuesForKey(r.key).length > 0 ? `node-label-values-${r.key.replace(/[^a-zA-Z0-9]/g, '-')}` : undefined} placeholder="Values (comma separated)" className="flex-1 min-w-[150px] px-2 py-1 border rounded text-xs" value={r.values} onChange={(e) => { const next = { ...affinity }; next.required[idx].values = e.target.value; setAffinity(next); }} />
+                  <input type="text" placeholder="Values (comma separated)" className="flex-1 min-w-[150px] px-2 py-1 border rounded text-xs" value={r.values} onChange={(e) => { const next = { ...affinity }; next.required[idx].values = e.target.value; setAffinity(next); }} />
                 )}
                 <button type="button" onClick={() => { const next = { ...affinity }; next.required.splice(idx, 1); setAffinity(next); }} className="p-1 text-red-500 hover:bg-red-50 rounded ml-auto"><X size={14} /></button>
               </div>
@@ -281,7 +288,7 @@ export default function SchedulingSection({
                   <option value="In">In</option><option value="NotIn">NotIn</option><option value="Exists">Exists</option><option value="DoesNotExist">DoesNotExist</option><option value="Gt">Gt</option><option value="Lt">Lt</option>
                 </select>
                 {p.requirement.operator !== 'Exists' && p.requirement.operator !== 'DoesNotExist' && (
-                  <input type="text" list={p.requirement.key && getValuesForKey(p.requirement.key).length > 0 ? `node-label-values-${p.requirement.key.replace(/[^a-zA-Z0-9]/g, '-')}` : undefined} placeholder="Values (comma separated)" className="flex-1 min-w-[150px] px-2 py-1 border rounded text-xs" value={p.requirement.values} onChange={(e) => { const next = { ...affinity }; next.preferred[idx].requirement.values = e.target.value; setAffinity(next); }} />
+                  <input type="text" placeholder="Values (comma separated)" className="flex-1 min-w-[150px] px-2 py-1 border rounded text-xs" value={p.requirement.values} onChange={(e) => { const next = { ...affinity }; next.preferred[idx].requirement.values = e.target.value; setAffinity(next); }} />
                 )}
                 <button type="button" onClick={() => { const next = { ...affinity }; next.preferred.splice(idx, 1); setAffinity(next); }} className="p-1 text-red-500 hover:bg-red-50 rounded ml-auto"><X size={14} /></button>
               </div>
