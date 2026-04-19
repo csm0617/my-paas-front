@@ -109,8 +109,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
       env: toMap(envList),
       configs: toMap(configList),
       secrets: toMap(secretList),
-      configMounts: configMountList,
-      secretMounts: secretMountList,
+      configMounts: configMountList.filter(cm => cm.configMapName && cm.mountPath && (!cm.subPath || cm.key)),
+      secretMounts: secretMountList.filter(sm => sm.secretName && sm.mountPath && (!sm.subPath || sm.key)),
       livenessProbe: { path: '/healthz', port: formData.ports[0].port, initialDelaySeconds: 15, periodSeconds: 10 },
       readinessProbe: { path: '/ready', port: formData.ports[0].port, initialDelaySeconds: 5, periodSeconds: 10 },
     };
