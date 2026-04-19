@@ -128,7 +128,7 @@ export default function NamespaceList() {
                   return (
                     <tr key={ns.name} className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200 flex items-center space-x-2">
-                        <Box size={16} className="text-blue-500" />
+                        <FolderTree size={16} className="text-blue-500" />
                         <span>{ns.name}</span>
                         {isSystem && (
                           <span className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full">
