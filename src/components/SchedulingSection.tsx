@@ -38,6 +38,31 @@ export default function SchedulingSection({
   tolerationsJson, onTolerationsChange
 }: Props) {
   
+  // Standard K8s labels and taints for datalists
+  const COMMON_NODE_LABELS = [
+    'kubernetes.io/hostname',
+    'kubernetes.io/os',
+    'kubernetes.io/arch',
+    'node.kubernetes.io/instance-type',
+    'topology.kubernetes.io/zone',
+    'topology.kubernetes.io/region'
+  ];
+
+  const COMMON_NODE_VALUES = [
+    'linux', 'windows', 'amd64', 'arm64'
+  ];
+
+  const COMMON_TOLERATION_KEYS = [
+    'node.kubernetes.io/not-ready',
+    'node.kubernetes.io/unreachable',
+    'node.kubernetes.io/memory-pressure',
+    'node.kubernetes.io/disk-pressure',
+    'node.kubernetes.io/pid-pressure',
+    'node.kubernetes.io/network-unavailable',
+    'node.kubernetes.io/unschedulable',
+    'node.cloudprovider.kubernetes.io/uninitialized'
+  ];
+
   // Initialize Tolerations
   const [tolerations, setTolerations] = useState<TolerationUI[]>(() => {
     try {
@@ -142,6 +167,16 @@ export default function SchedulingSection({
 
   return (
     <div className="space-y-6">
+      <datalist id="node-label-keys">
+        {COMMON_NODE_LABELS.map(k => <option key={k} value={k} />)}
+      </datalist>
+      <datalist id="node-label-values">
+        {COMMON_NODE_VALUES.map(v => <option key={v} value={v} />)}
+      </datalist>
+      <datalist id="toleration-keys">
+        {COMMON_TOLERATION_KEYS.map(k => <option key={k} value={k} />)}
+      </datalist>
+
       <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Node Selector</h4>
@@ -149,9 +184,9 @@ export default function SchedulingSection({
         <div className="space-y-2">
           {nodeSelectorRows.map((row, idx) => (
             <div key={idx} className="flex items-center space-x-2">
-              <input type="text" placeholder="Key (e.g. disktype)" className="flex-1 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs" value={row.key} onChange={(e) => { const next = [...nodeSelectorRows]; next[idx].key = e.target.value; onNodeSelectorChange(next); }} />
+              <input type="text" list="node-label-keys" placeholder="Key (e.g. disktype)" className="flex-1 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs" value={row.key} onChange={(e) => { const next = [...nodeSelectorRows]; next[idx].key = e.target.value; onNodeSelectorChange(next); }} />
               <span className="text-slate-400">=</span>
-              <input type="text" placeholder="Value (e.g. ssd)" className="flex-1 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs" value={row.value} onChange={(e) => { const next = [...nodeSelectorRows]; next[idx].value = e.target.value; onNodeSelectorChange(next); }} />
+              <input type="text" list="node-label-values" placeholder="Value (e.g. ssd)" className="flex-1 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs" value={row.value} onChange={(e) => { const next = [...nodeSelectorRows]; next[idx].value = e.target.value; onNodeSelectorChange(next); }} />
               <button type="button" onClick={() => onNodeSelectorChange(nodeSelectorRows.filter((_, i) => i !== idx))} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><X size={14} /></button>
             </div>
           ))}
@@ -168,7 +203,7 @@ export default function SchedulingSection({
         <div className="space-y-2">
           {tolerations.map((t, idx) => (
             <div key={t.id} className="flex flex-wrap items-center gap-2 p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
-              <input type="text" placeholder="Key" className="w-32 px-2 py-1 border rounded text-xs" value={t.key} onChange={(e) => { const next = [...tolerations]; next[idx].key = e.target.value; setTolerations(next); }} />
+              <input type="text" list="toleration-keys" placeholder="Key" className="w-32 px-2 py-1 border rounded text-xs" value={t.key} onChange={(e) => { const next = [...tolerations]; next[idx].key = e.target.value; setTolerations(next); }} />
               <select className="w-24 px-2 py-1 border rounded text-xs" value={t.operator} onChange={(e) => { const next = [...tolerations]; next[idx].operator = e.target.value as 'Equal' | 'Exists'; setTolerations(next); }}>
                 <option value="Equal">Equal</option>
                 <option value="Exists">Exists</option>
@@ -205,7 +240,7 @@ export default function SchedulingSection({
           <div className="space-y-2">
             {affinity.required.map((r, idx) => (
               <div key={r.id} className="flex flex-wrap items-center gap-2 p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
-                <input type="text" placeholder="Key" className="w-32 px-2 py-1 border rounded text-xs" value={r.key} onChange={(e) => { const next = { ...affinity }; next.required[idx].key = e.target.value; setAffinity(next); }} />
+                <input type="text" list="node-label-keys" placeholder="Key" className="w-32 px-2 py-1 border rounded text-xs" value={r.key} onChange={(e) => { const next = { ...affinity }; next.required[idx].key = e.target.value; setAffinity(next); }} />
                 <select className="w-28 px-2 py-1 border rounded text-xs" value={r.operator} onChange={(e) => { const next = { ...affinity }; next.required[idx].operator = e.target.value as 'In' | 'NotIn' | 'Exists' | 'DoesNotExist' | 'Gt' | 'Lt'; setAffinity(next); }}>
                   <option value="In">In</option><option value="NotIn">NotIn</option><option value="Exists">Exists</option><option value="DoesNotExist">DoesNotExist</option><option value="Gt">Gt</option><option value="Lt">Lt</option>
                 </select>
@@ -228,7 +263,7 @@ export default function SchedulingSection({
             {affinity.preferred.map((p, idx) => (
               <div key={p.requirement.id} className="flex flex-wrap items-center gap-2 p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
                 <input type="number" min="1" max="100" placeholder="Weight (1-100)" className="w-24 px-2 py-1 border rounded text-xs" value={p.weight} onChange={(e) => { const next = { ...affinity }; next.preferred[idx].weight = parseInt(e.target.value) || 1; setAffinity(next); }} title="Weight" />
-                <input type="text" placeholder="Key" className="w-32 px-2 py-1 border rounded text-xs" value={p.requirement.key} onChange={(e) => { const next = { ...affinity }; next.preferred[idx].requirement.key = e.target.value; setAffinity(next); }} />
+                <input type="text" list="node-label-keys" placeholder="Key" className="w-32 px-2 py-1 border rounded text-xs" value={p.requirement.key} onChange={(e) => { const next = { ...affinity }; next.preferred[idx].requirement.key = e.target.value; setAffinity(next); }} />
                 <select className="w-28 px-2 py-1 border rounded text-xs" value={p.requirement.operator} onChange={(e) => { const next = { ...affinity }; next.preferred[idx].requirement.operator = e.target.value as 'In' | 'NotIn' | 'Exists' | 'DoesNotExist' | 'Gt' | 'Lt'; setAffinity(next); }}>
                   <option value="In">In</option><option value="NotIn">NotIn</option><option value="Exists">Exists</option><option value="DoesNotExist">DoesNotExist</option><option value="Gt">Gt</option><option value="Lt">Lt</option>
                 </select>
