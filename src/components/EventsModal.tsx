@@ -125,12 +125,21 @@ export default function EventsModal({ app, isOpen, onClose }: Props) {
           ) : (
             <div className="space-y-3">
               {events.map(e => {
-                const key = `${e.namespace || app.namespace}:${e.name || ''}:${e.lastTimestamp || ''}:${e.reason || ''}`;
+                const key = `${e.namespace || app.namespace}:${e.name || ''}:${e.lastTimestamp || e.eventTime || ''}:${e.reason || ''}`;
                 const type = (e.type || '').toLowerCase();
                 const typeCls = type === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-200' : type === 'normal' ? 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200';
                 const reason = e.reason || '-';
                 const message = e.message || '';
-                const time = e.lastTimestamp || '';
+                
+                // Extract actual timestamp from string or MicroTime object string format
+                let time = e.lastTimestamp || e.eventTime || '';
+                if (typeof time === 'string' && time.startsWith('MicroTime(time=')) {
+                  const match = time.match(/time=([^,]+)/);
+                  if (match && match[1]) {
+                    time = match[1];
+                  }
+                }
+                
                 const involved = `${e.involvedObjectKind || 'Object'} / ${e.involvedObjectName || '-'}`;
                 
                 return (
