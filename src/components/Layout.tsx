@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Settings, Layers, Box, Share2, Link as LinkIcon, Server, FileCode, Activity } from 'lucide-react';
+import { LayoutDashboard, Settings, Layers, Box, Share2, Link as LinkIcon, Server, FileCode, Activity, FolderTree } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -48,7 +48,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
             }`}
           >
-            <Box size={20} />
+            <FolderTree size={20} />
             <span>Namespaces</span>
           </Link>
           <Link
