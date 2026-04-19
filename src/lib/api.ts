@@ -315,7 +315,7 @@ export const api = {
   },
 
   getNodes: async (): Promise<K8sNode[]> => {
-    const res = await apiClient.get<Result<K8sNode[]>>(`/cluster/nodes`);
+    const res = await apiClient.get<Result<K8sNode[]>>(`/nodes`);
     return res.data.data;
   },
 };
