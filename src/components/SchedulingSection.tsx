@@ -261,7 +261,7 @@ export default function SchedulingSection({
           </div>
         </div>
       ) : (
-        <>
+        <div className="space-y-6">
           <datalist id="node-label-keys">
         {COMMON_NODE_LABELS.map(k => <option key={k} value={k} />)}
       </datalist>
@@ -397,6 +397,7 @@ export default function SchedulingSection({
               <Plus size={14} /><span>Add Preferred Rule</span>
             </button>
           </div>
+        </div>
         </div>
       )}
     </div>
