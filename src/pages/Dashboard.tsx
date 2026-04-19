@@ -10,7 +10,7 @@ import YamlModal from '@/components/YamlModal';
 import EventsModal from '@/components/EventsModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import InputDialog from '@/components/InputDialog';
-import { Application, DeployCommand, Pod } from '@/lib/api';
+import { Application, DeployCommand, Pod, podApi } from '@/lib/api';
 import { Plus, RefreshCw, FolderTree, AlertCircle, LayoutGrid, List } from 'lucide-react';
 import { useK8sWatch } from '@/hooks/useK8sWatch';
 
@@ -19,21 +19,24 @@ export default function Dashboard() {
   const { namespaces, fetchNamespaces } = useNamespaceStore();
 
   const [isDeployModalOpen, setDeployModalOpen] = useState(false);
+  const [editServiceApp, setEditServiceApp] = useState<{ app: Application; serviceName: string } | null>(null);
   const [logsPod, setLogsPod] = useState<Pod | null>(null);
   const [terminalPod, setTerminalPod] = useState<Pod | null>(null);
-  const [yamlApp, setYamlApp] = useState<Application | null>(null);
+  const [yamlApp, setYamlApp] = useState<{ app: Application; serviceName?: string; workloadName?: string } | null>(null);
   const [eventsApp, setEventsApp] = useState<Application | null>(null);
   const [inputAction, setInputAction] = useState<{
     type: 'scale' | 'image';
     app: Application;
     serviceName: string;
-    containerName?: string;
+    workloadName?: string;
     currentValue?: string;
   } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'delete' | 'stop' | 'restart' | 'rollback';
-    app: Application;
+    type: 'delete' | 'stop' | 'restart' | 'rollback' | 'deletePod';
+    app?: Application;
     serviceName?: string;
+    workloadName?: string;
+    pod?: Pod;
   } | null>(null);
 
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
@@ -52,29 +55,29 @@ export default function Dashboard() {
     }
   });
 
-  const handleScale = async (app: Application, serviceName: string, currentReplicas: number) => {
-    setInputAction({ type: 'scale', app, serviceName, currentValue: currentReplicas.toString() });
+  const handleScale = async (app: Application, serviceName: string, workloadName: string, currentReplicas: number) => {
+    setInputAction({ type: 'scale', app, serviceName, workloadName, currentValue: currentReplicas.toString() });
   };
 
-  const handleUpdateImage = async (app: Application, serviceName: string, containerName: string, currentImage: string) => {
-    setInputAction({ type: 'image', app, serviceName, containerName, currentValue: currentImage });
+  const handleUpdateImage = async (app: Application, serviceName: string, workloadName: string, currentImage: string) => {
+    setInputAction({ type: 'image', app, serviceName, workloadName, currentValue: currentImage });
   };
 
   const handleInputConfirm = async (value: string) => {
     if (!inputAction) return;
     try {
-      if (inputAction.type === 'scale') {
+      if (inputAction.type === 'scale' && inputAction.workloadName) {
         const n = parseInt(value, 10);
         if (!isNaN(n) && n >= 0) {
-          await scale(inputAction.app.name, inputAction.serviceName, n);
+          await scale(inputAction.app.name, inputAction.serviceName, inputAction.workloadName, n);
         }
-      } else if (inputAction.type === 'image' && inputAction.containerName) {
+      } else if (inputAction.type === 'image' && inputAction.workloadName) {
         if (value.trim()) {
-          await updateImage(inputAction.app.name, inputAction.serviceName, inputAction.containerName, value.trim());
+          await updateImage(inputAction.app.name, inputAction.serviceName, inputAction.workloadName, value.trim());
         }
       }
     } catch (err: any) {
-      alert(err.message || `Failed to update ${inputAction.type}`);
+      console.error(`Failed to update ${inputAction.type}:`, err);
     } finally {
       setInputAction(null);
     }
@@ -96,24 +99,38 @@ export default function Dashboard() {
     setConfirmAction({ type: 'stop', app });
   };
 
-  const handleRestart = async (app: Application, serviceName: string) => {
-    setConfirmAction({ type: 'restart', app, serviceName });
+  const handleRestart = async (app: Application, serviceName: string, workloadName: string) => {
+    setConfirmAction({ type: 'restart', app, serviceName, workloadName });
   };
 
-  const handleRollback = async (app: Application, serviceName: string) => {
-    setConfirmAction({ type: 'rollback', app, serviceName });
+  const handleRollback = async (app: Application, serviceName: string, workloadName: string) => {
+    setConfirmAction({ type: 'rollback', app, serviceName, workloadName });
+  };
+
+  const handleEditService = (app: Application, serviceName: string) => {
+    setEditServiceApp({ app, serviceName });
+  };
+
+  const handleDeletePod = (pod: Pod) => {
+    setConfirmAction({ type: 'deletePod', pod: pod });
   };
 
   const executeConfirmAction = async () => {
     if (!confirmAction) return;
-    const { type, app, serviceName } = confirmAction;
+    const { type, app, serviceName, workloadName, pod } = confirmAction;
     try {
-      if (type === 'delete') await deleteDeployment(app.name);
-      if (type === 'stop') await stop(app.name);
-      if (type === 'restart' && serviceName) await restart(app.name, serviceName);
-      if (type === 'rollback' && serviceName) await rollback(app.name, serviceName);
+      if (type === 'delete' && app) await deleteDeployment(app.name);
+      if (type === 'stop' && app) await stop(app.name);
+      if (type === 'restart' && app && serviceName && workloadName) await restart(app.name, serviceName, workloadName);
+      if (type === 'rollback' && app && serviceName && workloadName) await rollback(app.name, serviceName, workloadName);
+      if (type === 'deletePod' && pod) {
+        await podApi.delete(pod.namespace, pod.name);
+      }
     } catch (err: any) {
-      alert(err.message || `Failed to ${type} application`);
+      console.error(`Failed to ${type}:`, err);
+      // Removed the alert() hard popup as requested
+    } finally {
+      setConfirmAction(null);
     }
   };
 
@@ -225,11 +242,13 @@ export default function Dashboard() {
               onDelete={handleDelete}
               onViewLogs={setLogsPod}
               onOpenTerminal={setTerminalPod}
+              onDeletePod={handleDeletePod}
+              onEditService={handleEditService}
               onStart={handleStart}
               onStop={handleStop}
               onRestart={handleRestart}
               onRollback={handleRollback}
-              onViewYaml={setYamlApp}
+              onViewYaml={(app, serviceName, workloadName) => setYamlApp({ app, serviceName, workloadName })}
               onViewEvents={setEventsApp}
             />
           ))}
@@ -245,11 +264,13 @@ export default function Dashboard() {
               onDelete={handleDelete}
               onViewLogs={setLogsPod}
               onOpenTerminal={setTerminalPod}
+              onDeletePod={handleDeletePod}
+              onEditService={handleEditService}
               onStart={handleStart}
               onStop={handleStop}
               onRestart={handleRestart}
               onRollback={handleRollback}
-              onViewYaml={setYamlApp}
+              onViewYaml={(app, serviceName, workloadName) => setYamlApp({ app, serviceName, workloadName })}
               onViewEvents={setEventsApp}
             />
           ))}
@@ -262,6 +283,15 @@ export default function Dashboard() {
         onClose={() => setDeployModalOpen(false)}
         onDeploy={handleDeploy}
       />
+      {editServiceApp && (
+        <DeployModal
+          isOpen={!!editServiceApp}
+          onClose={() => setEditServiceApp(null)}
+          onDeploy={handleDeploy}
+          initialApp={editServiceApp.app}
+          initialServiceName={editServiceApp.serviceName}
+        />
+      )}
       <LogsDrawer
         pod={logsPod}
         onClose={() => setLogsPod(null)}
@@ -271,7 +301,9 @@ export default function Dashboard() {
         onClose={() => setTerminalPod(null)}
       />
       <YamlModal
-        app={yamlApp}
+        app={yamlApp?.app || null}
+        serviceName={yamlApp?.serviceName}
+        workloadName={yamlApp?.workloadName}
         onClose={() => setYamlApp(null)}
       />
       <EventsModal
@@ -281,12 +313,34 @@ export default function Dashboard() {
       />
       <ConfirmDialog
         isOpen={!!confirmAction}
-        title={confirmAction ? `${confirmAction.type.charAt(0).toUpperCase() + confirmAction.type.slice(1)} Application` : ''}
-        message={confirmAction ? `Are you sure you want to ${confirmAction.type} application '${confirmAction.app.name}'?` : ''}
+        title={
+          confirmAction?.type === 'deletePod'
+            ? 'Delete Pod'
+            : confirmAction
+            ? `${confirmAction.type.charAt(0).toUpperCase() + confirmAction.type.slice(1)} Application`
+            : ''
+        }
+        message={
+          confirmAction?.type === 'deletePod'
+            ? `Are you sure you want to delete pod '${confirmAction.pod?.name}'? Kubernetes will automatically recreate it if governed by a Deployment.`
+            : confirmAction && confirmAction.app
+            ? `Are you sure you want to ${confirmAction.type} application '${confirmAction.app.name}'?`
+            : ''
+        }
         onConfirm={executeConfirmAction}
         onCancel={() => setConfirmAction(null)}
-        confirmText={confirmAction ? confirmAction.type.charAt(0).toUpperCase() + confirmAction.type.slice(1) : 'Confirm'}
-        isDestructive={confirmAction?.type === 'delete' || confirmAction?.type === 'stop'}
+        confirmText={
+          confirmAction?.type === 'deletePod'
+            ? 'Delete'
+            : confirmAction
+            ? confirmAction.type.charAt(0).toUpperCase() + confirmAction.type.slice(1)
+            : 'Confirm'
+        }
+        isDestructive={
+          confirmAction?.type === 'delete' ||
+          confirmAction?.type === 'stop' ||
+          confirmAction?.type === 'deletePod'
+        }
       />
       <InputDialog
         isOpen={!!inputAction}

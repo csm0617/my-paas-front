@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { DeployCommand, ApplicationService, ContainerSpec, ConfigMount, SecretMount, PortSpec, api, K8sNode } from '@/lib/api';
+import { DeployCommand, ApplicationService, ContainerSpec, ConfigMount, SecretMount, PortSpec, api, K8sNode, Application } from '@/lib/api';
 import { X, Plus, Trash2, AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Save, Network } from 'lucide-react';
 import ConfigMountSection from '@/components/ConfigMountSection';
 import SchedulingSection from '@/components/SchedulingSection';
@@ -10,6 +10,8 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onDeploy: (command: DeployCommand) => Promise<void>;
+  initialApp?: Application | null;
+  initialServiceName?: string | null;
 }
 
 interface PortSpecState {
@@ -34,11 +36,7 @@ interface ContainerState {
   limitsCpu: string;
   limitsMemory: string;
   resourcePreset?: 'Small' | 'Medium' | 'Large';
-}
 
-interface ServiceState {
-  id: string;
-  name: string;
   replicas: number;
   maxReplicas: number;
   targetCpuUtilization?: number;
@@ -53,6 +51,11 @@ interface ServiceState {
   nodeSelectorRows: { key: string; value: string }[];
   affinityJson: string;
   tolerationsJson: string;
+}
+
+interface ServiceState {
+  id: string;
+  name: string;
   containers: ContainerState[];
 }
 
@@ -79,13 +82,8 @@ const initialContainer = (): ContainerState => ({
   requestsMemory: '',
   limitsCpu: '',
   limitsMemory: '',
-});
-
-const initialService = (): ServiceState => ({
-  id: generateId(),
-  name: 'web',
   replicas: 1,
-  maxReplicas: 5,
+  maxReplicas: 1,
   targetCpuUtilization: 80,
   targetMemoryUtilization: 80,
   enableService: true,
@@ -98,10 +96,15 @@ const initialService = (): ServiceState => ({
   nodeSelectorRows: [],
   affinityJson: '',
   tolerationsJson: '',
+});
+
+const initialService = (): ServiceState => ({
+  id: generateId(),
+  name: 'web',
   containers: [initialContainer()],
 });
 
-export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
+export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, initialServiceName }: Props) {
   const { namespaces, fetchNamespaces, loading: namespacesLoading } = useNamespaceStore();
   const { namespace: currentNamespace } = useAppStore();
   const steps = ['App Info', 'Services & Containers', 'Review'] as const;
@@ -123,16 +126,74 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
   const [nodeList, setNodeList] = useState<K8sNode[]>([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
 
+  const fromMap = (obj?: Record<string, string>) => {
+    if (!obj) return [];
+    return Object.entries(obj).map(([key, value]) => ({ key, value }));
+  };
+
   useEffect(() => {
     if (!isOpen) return;
-    setStep(0);
+    setStep(initialApp ? 1 : 0);
     setError(null);
     setNodePortStatus({});
-    setFormState((prev) => ({
-      ...prev,
-      namespace: currentNamespace || prev.namespace,
-      services: prev.services.length ? prev.services : [initialService()]
-    }));
+
+    if (initialApp && initialServiceName) {
+      const svc = initialApp.services.find(s => s.name === initialServiceName);
+      if (svc) {
+        setFormState({
+          name: initialApp.name,
+          namespace: initialApp.namespace,
+          description: initialApp.description || '',
+          services: [{
+            id: generateId(),
+            name: svc.name,
+            containers: svc.containers.map(c => ({
+              id: generateId(),
+              name: c.name,
+              image: c.image,
+              ports: c.ports?.map(p => ({
+                port: p.port,
+                protocol: (p.protocol as 'TCP' | 'UDP') || 'TCP',
+                enableNodePort: p.enableNodePort,
+                nodePort: p.nodePort
+              })) || [{ port: c.port || 80, protocol: 'TCP' }],
+              envList: fromMap(c.env),
+              configList: fromMap(c.configs),
+              secretList: fromMap(c.secrets),
+              configMounts: c.configMounts || [],
+              secretMounts: c.secretMounts || [],
+              requestsCpu: c.requestsCpu || '',
+              requestsMemory: c.requestsMemory || '',
+              limitsCpu: c.limitsCpu || '',
+              limitsMemory: c.limitsMemory || '',
+              replicas: c.replicas ?? svc.replicas,
+              maxReplicas: c.maxReplicas ?? c.replicas ?? svc.maxReplicas ?? svc.replicas,
+              targetCpuUtilization: c.targetCpuUtilization ?? svc.targetCpuUtilization,
+              targetMemoryUtilization: c.targetMemoryUtilization ?? svc.targetMemoryUtilization,
+              enableService: c.enableService ?? svc.enableService ?? false,
+              serviceType: c.serviceType ?? svc.serviceType ?? 'ClusterIP',
+              enableIngress: c.enableIngress ?? svc.enableIngress ?? false,
+              ingressDomain: c.ingressDomain ?? svc.ingressDomain ?? '',
+              schedulingMode: 'advanced',
+              simpleStrategy: 'any',
+              fixedNodeName: '',
+              nodeSelectorRows: fromMap(c.nodeSelector ?? svc.nodeSelector),
+              affinityJson: c.affinityJson ?? svc.affinityJson ?? '',
+              tolerationsJson: c.tolerationsJson ?? svc.tolerationsJson ?? '',
+            }))
+          }]
+        });
+      }
+    } else {
+      setFormState((prev) => ({
+        ...prev,
+        name: '',
+        description: '',
+        namespace: currentNamespace || prev.namespace,
+        services: [initialService()]
+      }));
+    }
+
     if (namespaces.length === 0 && !namespacesLoading) {
       fetchNamespaces();
     }
@@ -146,7 +207,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
       console.error('Failed to fetch nodes', e);
       setLoadingNodes(false);
     });
-  }, [isOpen]);
+  }, [isOpen, initialApp, initialServiceName]);
 
   const toggleService = (id: string) => {
     setExpandedServices(prev => {
@@ -207,65 +268,65 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
       namespace: formState.namespace,
       description: formState.description,
       services: formState.services.map(s => {
-        let finalNodeSelectorRows = s.nodeSelectorRows;
-        let finalAffinityJson = s.affinityJson;
-        let finalTolerationsJson = s.tolerationsJson;
-
-        if (s.schedulingMode === 'simple') {
-          finalNodeSelectorRows = [];
-          finalAffinityJson = '';
-          finalTolerationsJson = '';
-
-          if (s.simpleStrategy === 'fixed' && s.fixedNodeName) {
-            finalAffinityJson = JSON.stringify({
-              nodeAffinity: {
-                requiredDuringSchedulingIgnoredDuringExecution: {
-                  nodeSelectorTerms: [{
-                    matchExpressions: [{
-                      key: 'kubernetes.io/hostname',
-                      operator: 'In',
-                      values: [s.fixedNodeName]
-                    }]
-                  }]
-                }
-              }
-            });
-            finalTolerationsJson = JSON.stringify([{ operator: 'Exists' }]);
-          } else if (s.simpleStrategy === 'ha') {
-            finalAffinityJson = JSON.stringify({
-              podAntiAffinity: {
-                preferredDuringSchedulingIgnoredDuringExecution: [{
-                  weight: 100,
-                  podAffinityTerm: {
-                    labelSelector: {
-                      matchExpressions: [{
-                        key: 'paas.csm.com/service',
-                        operator: 'In',
-                        values: [s.name]
-                      }]
-                    },
-                    topologyKey: 'kubernetes.io/hostname'
-                  }
-                }]
-              }
-            });
-          }
-        }
-
         return {
           name: s.name,
-          replicas: s.replicas,
-          maxReplicas: s.maxReplicas,
-          targetCpuUtilization: s.targetCpuUtilization,
-          targetMemoryUtilization: s.targetMemoryUtilization,
-          enableService: s.enableService,
-          serviceType: s.serviceType,
-          enableIngress: s.enableIngress,
-          ingressDomain: s.ingressDomain,
-          nodeSelector: toMap(finalNodeSelectorRows),
-          affinityJson: finalAffinityJson,
-          tolerationsJson: finalTolerationsJson,
+          replicas: s.containers[0]?.replicas ?? 1, // Fallback for old mode if needed
+          maxReplicas: s.containers[0]?.maxReplicas ?? 1,
+          targetCpuUtilization: s.containers[0]?.targetCpuUtilization,
+          targetMemoryUtilization: s.containers[0]?.targetMemoryUtilization,
+          enableService: s.containers[0]?.enableService ?? true,
+          serviceType: s.containers[0]?.serviceType ?? 'ClusterIP',
+          enableIngress: s.containers[0]?.enableIngress ?? false,
+          ingressDomain: s.containers[0]?.ingressDomain ?? '',
+          nodeSelector: toMap(s.containers[0]?.nodeSelectorRows ?? []),
+          affinityJson: s.containers[0]?.affinityJson ?? '',
+          tolerationsJson: s.containers[0]?.tolerationsJson ?? '',
           containers: s.containers.map(c => {
+            let finalNodeSelectorRows = c.nodeSelectorRows;
+            let finalAffinityJson = c.affinityJson;
+            let finalTolerationsJson = c.tolerationsJson;
+
+            if (c.schedulingMode === 'simple') {
+              finalNodeSelectorRows = [];
+              finalAffinityJson = '';
+              finalTolerationsJson = '';
+
+              if (c.simpleStrategy === 'fixed' && c.fixedNodeName) {
+                finalAffinityJson = JSON.stringify({
+                  nodeAffinity: {
+                    requiredDuringSchedulingIgnoredDuringExecution: {
+                      nodeSelectorTerms: [{
+                        matchExpressions: [{
+                          key: 'kubernetes.io/hostname',
+                          operator: 'In',
+                          values: [c.fixedNodeName]
+                        }]
+                      }]
+                    }
+                  }
+                });
+                finalTolerationsJson = JSON.stringify([{ operator: 'Exists' }]);
+              } else if (c.simpleStrategy === 'ha') {
+                finalAffinityJson = JSON.stringify({
+                  podAntiAffinity: {
+                    preferredDuringSchedulingIgnoredDuringExecution: [{
+                      weight: 100,
+                      podAffinityTerm: {
+                        labelSelector: {
+                          matchExpressions: [{
+                            key: 'paas.csm.com/service',
+                            operator: 'In',
+                            values: [s.name]
+                          }]
+                        },
+                        topologyKey: 'kubernetes.io/hostname'
+                      }
+                    }]
+                  }
+                });
+              }
+            }
+
             const mainPort = c.ports[0]?.port;
             return {
               name: c.name,
@@ -288,6 +349,17 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
               requestsMemory: c.requestsMemory || undefined,
               limitsCpu: c.limitsCpu || undefined,
               limitsMemory: c.limitsMemory || undefined,
+              replicas: c.replicas,
+              maxReplicas: c.maxReplicas,
+              targetCpuUtilization: c.targetCpuUtilization,
+              targetMemoryUtilization: c.targetMemoryUtilization,
+              enableService: c.enableService,
+              serviceType: c.serviceType,
+              enableIngress: c.enableIngress,
+              ingressDomain: c.ingressDomain,
+              nodeSelector: toMap(finalNodeSelectorRows),
+              affinityJson: finalAffinityJson,
+              tolerationsJson: finalTolerationsJson,
             };
           })
         };
@@ -325,19 +397,19 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
       const nodePorts = new Set<number>();
       for (const s of formState.services) {
         if (!s.name?.trim()) return 'Service 名称不能为空';
-        if (!Number.isFinite(s.replicas) || s.replicas < 0) return `Service ${s.name} Replicas 不能小于 0`;
-        if (!Number.isFinite(s.maxReplicas) || s.maxReplicas < s.replicas) return `Service ${s.name} Max Replicas 不能小于 Replicas`;
-        if (s.enableIngress && !s.ingressDomain?.trim()) return `Service ${s.name} 启用 Ingress 时必须填写域名`;
-        
-        if (validateJson(s.affinityJson)) return `Service ${s.name} affinityJson 格式错误`;
-        if (validateJson(s.tolerationsJson)) return `Service ${s.name} tolerationsJson 格式错误`;
-
         if (s.containers.length === 0) return `Service ${s.name} 至少需要一个 Container`;
 
         for (const c of s.containers) {
           if (!c.name?.trim()) return `Container 名称不能为空 (in Service ${s.name})`;
           if (!c.image?.trim()) return `Container ${c.name} 镜像不能为空`;
           
+          if (!Number.isFinite(c.replicas) || c.replicas < 0) return `Container ${c.name} Replicas 不能小于 0`;
+          if (!Number.isFinite(c.maxReplicas) || c.maxReplicas < c.replicas) return `Container ${c.name} Max Replicas 不能小于 Replicas`;
+          if (c.enableIngress && !c.ingressDomain?.trim()) return `Container ${c.name} 启用 Ingress 时必须填写域名`;
+          
+          if (validateJson(c.affinityJson)) return `Container ${c.name} affinityJson 格式错误`;
+          if (validateJson(c.tolerationsJson)) return `Container ${c.name} tolerationsJson 格式错误`;
+
           for (const p of c.ports) {
             if (!Number.isFinite(p.port) || p.port < 1 || p.port > 65535) return `Container ${c.name} 端口必须在 1-65535 之间`;
             if (p.enableNodePort && p.nodePort !== undefined) {
@@ -383,7 +455,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
 
   const handleBack = () => {
     setError(null);
-    setStep((s) => Math.max(0, s - 1));
+    setStep((s) => Math.max(initialApp ? 1 : 0, s - 1));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -463,7 +535,9 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50">
-          <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Deploy New Application</h2>
+          <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
+            {initialApp && initialServiceName ? `Edit Service: ${initialServiceName}` : 'Deploy New Application'}
+          </h2>
           <button onClick={onClose} className="p-2 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
             <X size={20} />
           </button>
@@ -472,30 +546,34 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
         <div className="flex-1 overflow-y-auto p-6">
           <form id="deploy-form" onSubmit={handleSubmit} className="space-y-6">
             <div className="flex items-center gap-2 max-w-2xl mx-auto mb-8">
-              {steps.map((label, i) => (
-                <div key={label} className="flex items-center flex-1 min-w-0">
-                  <div className="flex flex-col items-center min-w-0 w-full">
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
-                        i <= step ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                      }`}
-                    >
-                      {i + 1}
+              {steps.map((label, i) => {
+                if (initialApp && i === 0) return null; // 隐藏步骤 1：App Info
+                const displayIndex = initialApp ? i : i + 1;
+                return (
+                  <div key={label} className="flex items-center flex-1 min-w-0">
+                    <div className="flex flex-col items-center min-w-0 w-full">
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          i <= step ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {displayIndex}
+                      </div>
+                      <div
+                        className={`mt-2 text-xs font-medium text-center truncate w-full ${
+                          i === step ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                        title={label}
+                      >
+                        {label}
+                      </div>
                     </div>
-                    <div
-                      className={`mt-2 text-xs font-medium text-center truncate w-full ${
-                        i === step ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'
-                      }`}
-                      title={label}
-                    >
-                      {label}
-                    </div>
+                    {i < steps.length - 1 && (
+                      <div className={`flex-1 h-0.5 mx-2 ${i < step ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                    )}
                   </div>
-                  {i < steps.length - 1 && (
-                    <div className={`flex-1 h-0.5 mx-2 ${i < step ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'}`} />
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {error && (
@@ -512,7 +590,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                     <input
                       type="text"
                       placeholder="e.g. my-app"
-                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      disabled={!!initialApp}
+                      className={`w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg outline-none ${initialApp ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
                       value={formState.name}
                       onChange={(e) => setFormState({ ...formState, name: e.target.value })}
                     />
@@ -521,6 +600,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Namespace</label>
                     <div className="space-y-2">
                       <select
+                        disabled={!!initialApp}
                         value={namespaceInOptions ? formState.namespace : '__custom__'}
                         onChange={(e) => {
                           const v = e.target.value;
@@ -530,7 +610,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                           }
                           setFormState({ ...formState, namespace: v });
                         }}
-                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        className={`w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg outline-none ${initialApp ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
                       >
                         {namespaceOptions.map((ns) => (
                           <option key={ns} value={ns}>{ns}</option>
@@ -569,7 +649,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                   <button
                     type="button"
                     onClick={() => setFormState(prev => ({ ...prev, services: [...prev.services, initialService()] }))}
-                    className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+                    disabled={!!initialApp}
+                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium ${initialApp ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
                   >
                     <Plus size={16} /> <span>Add Service</span>
                   </button>
@@ -595,7 +676,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                               e.stopPropagation();
                               setFormState(prev => ({ ...prev, services: prev.services.filter((_, i) => i !== sIdx) }));
                             }}
-                            className="p-1.5 text-red-500 hover:bg-red-100 rounded transition-colors"
+                            disabled={!!initialApp}
+                            className={`p-1.5 rounded transition-colors ${initialApp ? 'text-slate-400 cursor-not-allowed' : 'text-red-500 hover:bg-red-100'}`}
                           >
                             <Trash2 size={16} />
                           </button>
@@ -604,88 +686,16 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                         {isSvcExpanded && (
                           <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-6">
                             {/* Service Info */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">Service Name</label>
                                 <input
                                   type="text"
-                                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                  disabled={!!initialApp}
+                                  className={`w-full px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm ${initialApp ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500'}`}
                                   value={svc.name}
                                   onChange={(e) => updateService(sIdx, s => ({ ...s, name: e.target.value }))}
                                 />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Replicas</label>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                  value={svc.replicas}
-                                  onChange={(e) => updateService(sIdx, s => ({ ...s, replicas: Number(e.target.value) }))}
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Max Replicas</label>
-                                <input
-                                  type="number"
-                                  min={svc.replicas}
-                                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                  value={svc.maxReplicas}
-                                  onChange={(e) => updateService(sIdx, s => ({ ...s, maxReplicas: Number(e.target.value) }))}
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Target CPU/Mem (%)</label>
-                                <div className="flex space-x-2">
-                                  <input
-                                    type="number"
-                                    min="1" max="100" placeholder="CPU"
-                                    className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                    value={svc.targetCpuUtilization || ''}
-                                    onChange={(e) => updateService(sIdx, s => ({ ...s, targetCpuUtilization: e.target.value ? Number(e.target.value) : undefined }))}
-                                  />
-                                  <input
-                                    type="number"
-                                    min="1" max="100" placeholder="Mem"
-                                    className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                    value={svc.targetMemoryUtilization || ''}
-                                    onChange={(e) => updateService(sIdx, s => ({ ...s, targetMemoryUtilization: e.target.value ? Number(e.target.value) : undefined }))}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Service Routing */}
-                            <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
-                              <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Routing & Ingress</h4>
-                              <div className="flex items-center space-x-6">
-                                <label className="flex items-center space-x-2 cursor-pointer">
-                                  <input 
-                                    type="checkbox" 
-                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                    checked={svc.enableService}
-                                    onChange={(e) => updateService(sIdx, s => ({ ...s, enableService: e.target.checked }))}
-                                  />
-                                  <span className="text-sm text-slate-600 dark:text-slate-400">Enable Service</span>
-                                </label>
-                                <label className="flex items-center space-x-2 cursor-pointer">
-                                  <input 
-                                    type="checkbox" 
-                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                    checked={svc.enableIngress}
-                                    onChange={(e) => updateService(sIdx, s => ({ ...s, enableIngress: e.target.checked }))}
-                                  />
-                                  <span className="text-sm text-slate-600 dark:text-slate-400">Enable Ingress</span>
-                                </label>
-                                {svc.enableIngress && (
-                                  <input
-                                    type="text"
-                                    placeholder="Ingress Domain (e.g. app.domain.com)"
-                                    className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                    value={svc.ingressDomain}
-                                    onChange={(e) => updateService(sIdx, s => ({ ...s, ingressDomain: e.target.value }))}
-                                  />
-                                )}
                               </div>
                             </div>
 
@@ -697,6 +707,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                   type="button"
                                   onClick={() => updateService(sIdx, s => ({ ...s, containers: [...s.containers, initialContainer()] }))}
                                   className="text-xs flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
+                                  disabled={!!initialApp}
                                 >
                                   <Plus size={14} /> <span>Add Container</span>
                                 </button>
@@ -716,15 +727,16 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                           <span className="text-xs text-slate-500 font-mono truncate max-w-[200px]">{cnt.image}</span>
                                         </div>
                                         <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            updateService(sIdx, s => ({ ...s, containers: s.containers.filter((_, i) => i !== cIdx) }));
-                                          }}
-                                          className="p-1 text-red-500 hover:bg-red-100 rounded transition-colors"
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              updateService(sIdx, s => ({ ...s, containers: s.containers.filter((_, i) => i !== cIdx) }));
+                                            }}
+                                            disabled={!!initialApp}
+                                            className={`p-1 rounded transition-colors ${initialApp ? 'text-slate-400 cursor-not-allowed' : 'text-red-500 hover:bg-red-100'}`}
+                                          >
+                                            <Trash2 size={14} />
+                                          </button>
                                       </div>
                                       
                                       {isCntExpanded && (
@@ -734,7 +746,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                               <label className="block text-xs font-medium text-slate-500 mb-1">Name</label>
                                               <input
                                                 type="text"
-                                                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                disabled={!!initialApp}
+                                                className={`w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm ${initialApp ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500'}`}
                                                 value={cnt.name}
                                                 onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, name: e.target.value }))}
                                               />
@@ -748,6 +761,83 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                                 value={cnt.image}
                                                 onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, image: e.target.value }))}
                                               />
+                                            </div>
+                                          </div>
+
+                                          {/* Scaling */}
+                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div>
+                                              <label className="block text-xs font-medium text-slate-500 mb-1">Replicas</label>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                value={cnt.replicas}
+                                                onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, replicas: Number(e.target.value) }))}
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-slate-500 mb-1">Max Replicas</label>
+                                              <input
+                                                type="number"
+                                                min={cnt.replicas}
+                                                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                value={cnt.maxReplicas}
+                                                onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, maxReplicas: Number(e.target.value) }))}
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-slate-500 mb-1">Target CPU/Mem (%)</label>
+                                              <div className="flex space-x-2">
+                                                <input
+                                                  type="number"
+                                                  min="1" max="100" placeholder="CPU"
+                                                  className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                  value={cnt.targetCpuUtilization || ''}
+                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, targetCpuUtilization: e.target.value ? Number(e.target.value) : undefined }))}
+                                                />
+                                                <input
+                                                  type="number"
+                                                  min="1" max="100" placeholder="Mem"
+                                                  className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                  value={cnt.targetMemoryUtilization || ''}
+                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, targetMemoryUtilization: e.target.value ? Number(e.target.value) : undefined }))}
+                                                />
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* Routing */}
+                                          <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                                            <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Routing & Ingress</h4>
+                                            <div className="flex items-center space-x-6">
+                                              <label className="flex items-center space-x-2 cursor-pointer">
+                                                <input 
+                                                  type="checkbox" 
+                                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                  checked={cnt.enableService}
+                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, enableService: e.target.checked }))}
+                                                />
+                                                <span className="text-sm text-slate-600 dark:text-slate-400">Enable Service</span>
+                                              </label>
+                                              <label className="flex items-center space-x-2 cursor-pointer">
+                                                <input 
+                                                  type="checkbox" 
+                                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                  checked={cnt.enableIngress}
+                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, enableIngress: e.target.checked }))}
+                                                />
+                                                <span className="text-sm text-slate-600 dark:text-slate-400">Enable Ingress</span>
+                                              </label>
+                                              {cnt.enableIngress && (
+                                                <input
+                                                  type="text"
+                                                  placeholder="Ingress Domain (e.g. app.domain.com)"
+                                                  className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                  value={cnt.ingressDomain}
+                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, ingressDomain: e.target.value }))}
+                                                />
+                                              )}
                                             </div>
                                           </div>
 
@@ -898,6 +988,100 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                             />
                                           </div>
 
+                                          {/* Scheduling */}
+                                          <div className="bg-slate-50 dark:bg-slate-900/30 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
+                                            <div className="flex items-center justify-between mb-4">
+                                              <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                                <Network size={16} className="text-blue-500" />
+                                                Scheduling Strategy
+                                              </label>
+                                              <div className="flex bg-slate-200 dark:bg-slate-800 p-0.5 rounded-lg">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    if (cnt.schedulingMode === 'advanced') {
+                                                       if (!confirm('Switching to Simple mode will clear your advanced scheduling rules. Continue?')) return;
+                                                       updateContainer(sIdx, cIdx, c => ({ ...c, schedulingMode: 'simple', nodeSelectorRows: [], affinityJson: '', tolerationsJson: '' }));
+                                                    }
+                                                  }}
+                                                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${cnt.schedulingMode === 'simple' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                                >
+                                                  Simple
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, schedulingMode: 'advanced' }))}
+                                                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${cnt.schedulingMode === 'advanced' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                                >
+                                                  Advanced
+                                                </button>
+                                              </div>
+                                            </div>
+
+                                            {cnt.schedulingMode === 'simple' ? (
+                                              <div className="space-y-3">
+                                                {/* Any Node */}
+                                                <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${cnt.simpleStrategy === 'any' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
+                                                  <input type="radio" name={`strategy-${sIdx}-${cIdx}`} className="mt-1" checked={cnt.simpleStrategy === 'any'} onChange={() => updateContainer(sIdx, cIdx, c => ({ ...c, simpleStrategy: 'any' }))} />
+                                                  <div className="ml-3">
+                                                    <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Any Worker Node (Default)</div>
+                                                    <div className="text-xs text-slate-500 mt-0.5">Automatically schedule on any available node.</div>
+                                                  </div>
+                                                </label>
+
+                                                {/* Fixed Node */}
+                                                <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${cnt.simpleStrategy === 'fixed' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
+                                                  <input type="radio" name={`strategy-${sIdx}-${cIdx}`} className="mt-1" checked={cnt.simpleStrategy === 'fixed'} onChange={() => updateContainer(sIdx, cIdx, c => ({ ...c, simpleStrategy: 'fixed' }))} />
+                                                  <div className="ml-3 w-full pr-4">
+                                                    <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Fixed Node</div>
+                                                    <div className="text-xs text-slate-500 mt-0.5 mb-2">Pin this service to a specific node (bypasses Master taints).</div>
+                                                    {cnt.simpleStrategy === 'fixed' && (
+                                                      <div className="relative">
+                                                        {loadingNodes ? (
+                                                          <div className="text-xs text-slate-400 mt-2">Loading nodes...</div>
+                                                        ) : (
+                                                          <select
+                                                            className="w-full mt-2 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
+                                                            value={cnt.fixedNodeName}
+                                                            onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, fixedNodeName: e.target.value }))}
+                                                            onClick={(e) => e.preventDefault()}
+                                                          >
+                                                            <option value="" disabled>Select a Node...</option>
+                                                            {nodeList.map(node => (
+                                                              <option key={node.name} value={node.name}>
+                                                                {node.name} ({node.roles.join(', ') || 'worker'}) - {node.status}
+                                                              </option>
+                                                            ))}
+                                                          </select>
+                                                        )}
+                                                        <div className="absolute right-3 top-1/2 mt-1 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                          <ChevronDown size={14} />
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </label>
+
+                                                {/* High Availability */}
+                                                <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${cnt.simpleStrategy === 'ha' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
+                                                  <input type="radio" name={`strategy-${sIdx}-${cIdx}`} className="mt-1" checked={cnt.simpleStrategy === 'ha'} onChange={() => updateContainer(sIdx, cIdx, c => ({ ...c, simpleStrategy: 'ha' }))} />
+                                                  <div className="ml-3">
+                                                    <div className="text-sm font-medium text-slate-700 dark:text-slate-200">High Availability (Anti-Affinity)</div>
+                                                    <div className="text-xs text-slate-500 mt-0.5">Spread replicas across different nodes to prevent single-point-of-failure.</div>
+                                                  </div>
+                                                </label>
+                                              </div>
+                                            ) : (
+                                              <SchedulingSection
+                                                nodeSelectorRows={cnt.nodeSelectorRows}
+                                                onNodeSelectorChange={(rows) => updateContainer(sIdx, cIdx, c => ({ ...c, nodeSelectorRows: rows }))}
+                                                affinityJson={cnt.affinityJson}
+                                                onAffinityChange={(json) => updateContainer(sIdx, cIdx, c => ({ ...c, affinityJson: json }))}
+                                                tolerationsJson={cnt.tolerationsJson}
+                                                onTolerationsChange={(json) => updateContainer(sIdx, cIdx, c => ({ ...c, tolerationsJson: json }))}
+                                              />
+                                            )}
+                                          </div>
                                         </div>
                                       )}
                                     </div>
@@ -905,102 +1089,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                 })}
                               </div>
                             </div>
-                            
-                            {/* Scheduling */}
-                            <div className="bg-slate-50 dark:bg-slate-900/30 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
-                              <div className="flex items-center justify-between mb-4">
-                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                                  <Network size={16} className="text-blue-500" />
-                                  Scheduling Strategy
-                                </label>
-                                <div className="flex bg-slate-200 dark:bg-slate-800 p-0.5 rounded-lg">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (svc.schedulingMode === 'advanced') {
-                                         if (!confirm('Switching to Simple mode will clear your advanced scheduling rules. Continue?')) return;
-                                         updateService(sIdx, s => ({ ...s, schedulingMode: 'simple', nodeSelectorRows: [], affinityJson: '', tolerationsJson: '' }));
-                                      }
-                                    }}
-                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${svc.schedulingMode === 'simple' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                                  >
-                                    Simple
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateService(sIdx, s => ({ ...s, schedulingMode: 'advanced' }))}
-                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${svc.schedulingMode === 'advanced' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                                  >
-                                    Advanced
-                                  </button>
-                                </div>
-                              </div>
-
-                              {svc.schedulingMode === 'simple' ? (
-                                <div className="space-y-3">
-                                  {/* Any Node */}
-                                  <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${svc.simpleStrategy === 'any' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
-                                    <input type="radio" name={`strategy-${sIdx}`} className="mt-1" checked={svc.simpleStrategy === 'any'} onChange={() => updateService(sIdx, s => ({ ...s, simpleStrategy: 'any' }))} />
-                                    <div className="ml-3">
-                                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Any Worker Node (Default)</div>
-                                      <div className="text-xs text-slate-500 mt-0.5">Automatically schedule on any available node.</div>
-                                    </div>
-                                  </label>
-
-                                  {/* Fixed Node */}
-                                  <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${svc.simpleStrategy === 'fixed' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
-                                    <input type="radio" name={`strategy-${sIdx}`} className="mt-1" checked={svc.simpleStrategy === 'fixed'} onChange={() => updateService(sIdx, s => ({ ...s, simpleStrategy: 'fixed' }))} />
-                                    <div className="ml-3 w-full pr-4">
-                                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Fixed Node</div>
-                                      <div className="text-xs text-slate-500 mt-0.5 mb-2">Pin this service to a specific node (bypasses Master taints).</div>
-                                      {svc.simpleStrategy === 'fixed' && (
-                                        <div className="relative">
-                                          {loadingNodes ? (
-                                            <div className="text-xs text-slate-400 mt-2">Loading nodes...</div>
-                                          ) : (
-                                            <select
-                                              className="w-full mt-2 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
-                                              value={svc.fixedNodeName}
-                                              onChange={(e) => updateService(sIdx, s => ({ ...s, fixedNodeName: e.target.value }))}
-                                              onClick={(e) => e.preventDefault()}
-                                            >
-                                              <option value="" disabled>Select a Node...</option>
-                                              {nodeList.map(node => (
-                                                <option key={node.name} value={node.name}>
-                                                  {node.name} ({node.roles.join(', ') || 'worker'}) - {node.status}
-                                                </option>
-                                              ))}
-                                            </select>
-                                          )}
-                                          <div className="absolute right-3 top-1/2 mt-1 -translate-y-1/2 pointer-events-none text-slate-400">
-                                            <ChevronDown size={14} />
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </label>
-
-                                  {/* High Availability */}
-                                  <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${svc.simpleStrategy === 'ha' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
-                                    <input type="radio" name={`strategy-${sIdx}`} className="mt-1" checked={svc.simpleStrategy === 'ha'} onChange={() => updateService(sIdx, s => ({ ...s, simpleStrategy: 'ha' }))} />
-                                    <div className="ml-3">
-                                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">High Availability (Anti-Affinity)</div>
-                                      <div className="text-xs text-slate-500 mt-0.5">Spread replicas across different nodes to prevent single-point-of-failure.</div>
-                                    </div>
-                                  </label>
-                                </div>
-                              ) : (
-                                <SchedulingSection
-                                  nodeSelectorRows={svc.nodeSelectorRows}
-                                  onNodeSelectorChange={(rows) => updateService(sIdx, s => ({ ...s, nodeSelectorRows: rows }))}
-                                  affinityJson={svc.affinityJson}
-                                  onAffinityChange={(json) => updateService(sIdx, s => ({ ...s, affinityJson: json }))}
-                                  tolerationsJson={svc.tolerationsJson}
-                                  onTolerationsChange={(json) => updateService(sIdx, s => ({ ...s, tolerationsJson: json }))}
-                                />
-                              )}
-                            </div>
-
                           </div>
                         )}
                       </div>
@@ -1068,7 +1156,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
 
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between gap-3">
           <div className="text-xs text-slate-500 dark:text-slate-400">
-            Step {step + 1} / {steps.length}
+            Step {initialApp ? step : step + 1} / {initialApp ? steps.length - 1 : steps.length}
           </div>
           <div className="flex items-center space-x-3">
             <button
@@ -1080,7 +1168,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
               Cancel
             </button>
 
-            {step > 0 && (
+            {step > (initialApp ? 1 : 0) && (
               <button
                 type="button"
                 onClick={handleBack}

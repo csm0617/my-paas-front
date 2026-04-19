@@ -4,10 +4,12 @@ import { Application, api } from '@/lib/api';
 
 interface Props {
   app: Application | null;
+  serviceName?: string;
+  workloadName?: string;
   onClose: () => void;
 }
 
-export default function YamlModal({ app, onClose }: Props) {
+export default function YamlModal({ app, serviceName, workloadName, onClose }: Props) {
   const [yaml, setYaml] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,14 @@ export default function YamlModal({ app, onClose }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const data = await api.getYaml(app.namespace, app.name);
+        let data;
+        if (serviceName && workloadName) {
+          data = await api.getWorkloadYaml(app.namespace, app.name, serviceName, workloadName);
+        } else if (serviceName) {
+          data = await api.getServiceYaml(app.namespace, app.name, serviceName);
+        } else {
+          data = await api.getYaml(app.namespace, app.name);
+        }
         setYaml(data);
       } catch (err: any) {
         setError(err.response?.data?.message || err.message || 'Failed to load YAML');
@@ -30,7 +39,7 @@ export default function YamlModal({ app, onClose }: Props) {
     };
 
     fetchYaml();
-  }, [app]);
+  }, [app, serviceName, workloadName]);
 
   if (!app) return null;
 
@@ -49,7 +58,7 @@ export default function YamlModal({ app, onClose }: Props) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
           <div>
             <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center space-x-2">
-              <span>{app.name} Resources YAML</span>
+              <span>{serviceName && workloadName ? `${app.name} - ${serviceName} - ${workloadName}` : serviceName ? `${app.name} - ${serviceName}` : app.name} Resources YAML</span>
             </h2>
             <p className="text-xs text-slate-500 mt-1">Namespace: {app.namespace}</p>
           </div>

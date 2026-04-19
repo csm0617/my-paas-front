@@ -91,6 +91,18 @@ export interface ContainerSpec {
   requestsMemory?: string;
   limitsCpu?: string;
   limitsMemory?: string;
+
+  replicas?: number;
+  maxReplicas?: number;
+  targetCpuUtilization?: number;
+  targetMemoryUtilization?: number;
+  enableService?: boolean;
+  serviceType?: string;
+  enableIngress?: boolean;
+  ingressDomain?: string;
+  nodeSelector?: Record<string, string>;
+  affinityJson?: string;
+  tolerationsJson?: string;
 }
 
 export interface ApplicationService {
@@ -268,6 +280,27 @@ export const api = {
     });
   },
 
+  scaleWorkload: async (namespace: string, name: string, serviceName: string, workloadName: string, replicas: number): Promise<void> => {
+    await apiClient.put(`/applications/deployments/${namespace}/${name}/${serviceName}/${workloadName}/scale`, null, { params: { replicas } });
+  },
+
+  updateWorkloadImage: async (namespace: string, name: string, serviceName: string, workloadName: string, image: string): Promise<void> => {
+    await apiClient.put(`/applications/deployments/${namespace}/${name}/${serviceName}/${workloadName}/image`, null, { params: { image } });
+  },
+
+  restartWorkload: async (namespace: string, name: string, serviceName: string, workloadName: string): Promise<void> => {
+    await apiClient.post(`/applications/deployments/${namespace}/${name}/${serviceName}/${workloadName}/restart`);
+  },
+
+  rollbackWorkload: async (namespace: string, name: string, serviceName: string, workloadName: string): Promise<void> => {
+    await apiClient.post(`/applications/deployments/${namespace}/${name}/${serviceName}/${workloadName}/rollback`);
+  },
+
+  getWorkloadYaml: async (namespace: string, name: string, serviceName: string, workloadName: string): Promise<string> => {
+    const res = await apiClient.get<Result<string>>(`/applications/deployments/${namespace}/${name}/${serviceName}/${workloadName}/yaml`);
+    return res.data.data;
+  },
+
   delete: async (namespace: string, name: string): Promise<void> => {
     await apiClient.delete(`/applications/deployments/${namespace}/${name}`);
   },
@@ -304,6 +337,10 @@ export const api = {
 
   getYaml: async (namespace: string, name: string): Promise<string> => {
     const res = await apiClient.get<Result<string>>(`/applications/deployments/${namespace}/${name}/yaml`);
+    return res.data.data;
+  },
+  getServiceYaml: async (namespace: string, name: string, serviceName: string): Promise<string> => {
+    const res = await apiClient.get<Result<string>>(`/applications/deployments/${namespace}/${name}/${serviceName}/yaml`);
     return res.data.data;
   },
 
