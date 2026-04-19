@@ -32,6 +32,7 @@ interface ContainerState {
   requestsMemory: string;
   limitsCpu: string;
   limitsMemory: string;
+  resourcePreset?: 'Small' | 'Medium' | 'Large';
 }
 
 interface ServiceState {
@@ -774,24 +775,24 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                                               <div className="flex items-center space-x-2">
                                                 <button
                                                   type="button"
-                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: '250m', limitsCpu: '500m', requestsMemory: '256Mi', limitsMemory: '512Mi' }))}
-                                                  className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded transition-colors"
+                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: '250m', limitsCpu: '500m', requestsMemory: '256Mi', limitsMemory: '512Mi', resourcePreset: 'Small' }))}
+                                                  className={`text-[10px] px-2 py-0.5 border rounded transition-colors ${cnt.resourcePreset === 'Small' ? 'bg-blue-500 text-white border-blue-600 shadow-sm' : 'bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border-slate-200 hover:border-blue-200'}`}
                                                   title="Small: 0.25-0.5 CPU, 256-512MB Mem"
                                                 >
                                                   Small
                                                 </button>
                                                 <button
                                                   type="button"
-                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: '500m', limitsCpu: '1000m', requestsMemory: '512Mi', limitsMemory: '1Gi' }))}
-                                                  className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded transition-colors"
+                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: '500m', limitsCpu: '1000m', requestsMemory: '512Mi', limitsMemory: '1Gi', resourcePreset: 'Medium' }))}
+                                                  className={`text-[10px] px-2 py-0.5 border rounded transition-colors ${cnt.resourcePreset === 'Medium' ? 'bg-blue-500 text-white border-blue-600 shadow-sm' : 'bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border-slate-200 hover:border-blue-200'}`}
                                                   title="Medium: 0.5-1 CPU, 0.5-1GB Mem"
                                                 >
                                                   Medium
                                                 </button>
                                                 <button
                                                   type="button"
-                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: '1000m', limitsCpu: '2000m', requestsMemory: '1Gi', limitsMemory: '2Gi' }))}
-                                                  className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded transition-colors"
+                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: '1000m', limitsCpu: '2000m', requestsMemory: '1Gi', limitsMemory: '2Gi', resourcePreset: 'Large' }))}
+                                                  className={`text-[10px] px-2 py-0.5 border rounded transition-colors ${cnt.resourcePreset === 'Large' ? 'bg-blue-500 text-white border-blue-600 shadow-sm' : 'bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border-slate-200 hover:border-blue-200'}`}
                                                   title="Large: 1-2 CPU, 1-2GB Mem"
                                                 >
                                                   Large
