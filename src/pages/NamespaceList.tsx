@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNamespaceStore } from '@/store/namespaceStore';
-import { Plus, RefreshCw, Trash2, Box, AlertCircle } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, FolderTree, AlertCircle } from 'lucide-react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function NamespaceList() {
@@ -51,7 +51,7 @@ export default function NamespaceList() {
       <div className="flex flex-col md:flex-row md:items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 gap-4">
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
-            <Box size={18} className="text-slate-500" />
+            <FolderTree size={18} className="text-slate-500" />
             <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Namespaces</span>
           </div>
           <button
