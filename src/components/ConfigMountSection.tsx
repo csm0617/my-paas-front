@@ -117,13 +117,17 @@ export default function ConfigMountSection({ configMounts, setConfigMounts, secr
                       />
                     </td>
                     <td className="p-2">
-                      <input
-                        type="number"
-                        placeholder="420"
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={mount.defaultMode || ''}
-                        onChange={(e) => updateConfigMount(i, 'defaultMode', e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                      />
+                      <select
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                        value={mount.defaultMode || 420}
+                        onChange={(e) => updateConfigMount(i, 'defaultMode', parseInt(e.target.value, 10))}
+                      >
+                        <option value={256}>只读 (0400)</option>
+                        <option value={288}>只读/可执行 (0440)</option>
+                        <option value={420}>读写 (0644)</option>
+                        <option value={493}>读写/可执行 (0755)</option>
+                        <option value={511}>完全控制 (0777)</option>
+                      </select>
                     </td>
                     <td className="p-2 text-center">
                       <button
@@ -215,13 +219,17 @@ export default function ConfigMountSection({ configMounts, setConfigMounts, secr
                       />
                     </td>
                     <td className="p-2">
-                      <input
-                        type="number"
-                        placeholder="420"
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={mount.defaultMode || ''}
-                        onChange={(e) => updateSecretMount(i, 'defaultMode', e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                      />
+                      <select
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                        value={mount.defaultMode || 420}
+                        onChange={(e) => updateSecretMount(i, 'defaultMode', parseInt(e.target.value, 10))}
+                      >
+                        <option value={256}>只读 (0400)</option>
+                        <option value={288}>只读/可执行 (0440)</option>
+                        <option value={420}>读写 (0644)</option>
+                        <option value={493}>读写/可执行 (0755)</option>
+                        <option value={511}>完全控制 (0777)</option>
+                      </select>
                     </td>
                     <td className="p-2 text-center">
                       <button
