@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { ApplicationDeployment, eventApi, K8sEvent, podApi, Pod } from '@/lib/api';
-import { Activity, Box, Cpu, Trash2, Edit3, TerminalSquare, FileText, ArrowUpCircle, Play, Square, RotateCw, Undo2, ChevronDown, ChevronUp, FileCode } from 'lucide-react';
+import { Activity, Box, Cpu, Trash2, Edit3, TerminalSquare, FileText, ArrowUpCircle, Play, Square, RotateCw, Undo2, ChevronDown, ChevronUp, FileCode, ListOrdered } from 'lucide-react';
 import { useK8sWatch } from '@/hooks/useK8sWatch';
 
 interface Props {
@@ -325,6 +325,17 @@ export default function ApplicationCard({
                         </button>
                         <button onClick={() => onOpenTerminal(pod)} className="p-1 text-slate-500 hover:text-blue-500" title="Terminal">
                           <TerminalSquare size={14} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (!showEvents) setShowEvents(true);
+                            // Scroll down to the events section if needed, or simply toggle visibility
+                            // The events themselves are fetched below
+                          }}
+                          className="p-1 text-slate-500 hover:text-blue-500"
+                          title="Events"
+                        >
+                          <ListOrdered size={14} />
                         </button>
                       </div>
                     </div>
