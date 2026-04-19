@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { DeployCommand, ConfigMount, SecretMount, api } from '@/lib/api';
-import { X, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import ResourcesSchedulingSection from '@/components/ResourcesSchedulingSection';
+import { DeployCommand, ApplicationService, ContainerSpec, ConfigMount, SecretMount, PortSpec, api } from '@/lib/api';
+import { X, Plus, Trash2, AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Save } from 'lucide-react';
 import ConfigMountSection from '@/components/ConfigMountSection';
 import { useNamespaceStore } from '@/store/namespaceStore';
 import { useAppStore } from '@/store/appStore';
@@ -12,34 +11,105 @@ interface Props {
   onDeploy: (command: DeployCommand) => Promise<void>;
 }
 
+interface PortSpecState {
+  port: number;
+  protocol: 'TCP' | 'UDP';
+  enableNodePort?: boolean;
+  nodePort?: number;
+}
+
+interface ContainerState {
+  id: string;
+  name: string;
+  image: string;
+  ports: PortSpecState[];
+  envList: { key: string; value: string }[];
+  configList: { key: string; value: string }[];
+  secretList: { key: string; value: string }[];
+  configMounts: ConfigMount[];
+  secretMounts: SecretMount[];
+  requestsCpu: string;
+  requestsMemory: string;
+  limitsCpu: string;
+  limitsMemory: string;
+}
+
+interface ServiceState {
+  id: string;
+  name: string;
+  replicas: number;
+  maxReplicas: number;
+  targetCpuUtilization?: number;
+  targetMemoryUtilization?: number;
+  enableService: boolean;
+  serviceType: string;
+  enableIngress: boolean;
+  ingressDomain: string;
+  nodeSelectorRows: { key: string; value: string }[];
+  affinityJson: string;
+  tolerationsJson: string;
+  containers: ContainerState[];
+}
+
+interface FormState {
+  name: string;
+  namespace: string;
+  description: string;
+  services: ServiceState[];
+}
+
+const generateId = () => Math.random().toString(36).substring(7);
+
+const initialContainer = (): ContainerState => ({
+  id: generateId(),
+  name: 'main',
+  image: '',
+  ports: [{ port: 80, protocol: 'TCP' }],
+  envList: [],
+  configList: [],
+  secretList: [],
+  configMounts: [],
+  secretMounts: [],
+  requestsCpu: '',
+  requestsMemory: '',
+  limitsCpu: '',
+  limitsMemory: '',
+});
+
+const initialService = (): ServiceState => ({
+  id: generateId(),
+  name: 'web',
+  replicas: 1,
+  maxReplicas: 5,
+  targetCpuUtilization: 80,
+  targetMemoryUtilization: 80,
+  enableService: true,
+  serviceType: 'ClusterIP',
+  enableIngress: false,
+  ingressDomain: '',
+  nodeSelectorRows: [],
+  affinityJson: '',
+  tolerationsJson: '',
+  containers: [initialContainer()],
+});
+
 export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
   const { namespaces, fetchNamespaces, loading: namespacesLoading } = useNamespaceStore();
   const { namespace: currentNamespace } = useAppStore();
-  const steps = ['Basic', 'Networking', 'Resources & Scheduling', 'Advanced', 'Review'] as const;
+  const steps = ['App Info', 'Services & Containers', 'Review'] as const;
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState<DeployCommand>({
+
+  const [formState, setFormState] = useState<FormState>({
     name: '',
     namespace: currentNamespace || 'default',
-    image: '',
-    ports: [{ port: 80, protocol: 'TCP' }],
-    replicas: 1,
-    maxReplicas: 5,
-    env: {},
-    targetCpuUtilization: 80,
-    targetMemoryUtilization: 80,
-    enableService: true,
-    serviceType: 'ClusterIP',
-    enableIngress: false,
-    ingressDomain: '',
+    description: '',
+    services: [initialService()],
   });
 
-  const [envList, setEnvList] = useState<{ key: string; value: string }[]>([]);
-  const [configList, setConfigList] = useState<{ key: string; value: string }[]>([]);
-  const [secretList, setSecretList] = useState<{ key: string; value: string }[]>([]);
-  const [configMountList, setConfigMountList] = useState<ConfigMount[]>([]);
-  const [secretMountList, setSecretMountList] = useState<SecretMount[]>([]);
+  const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
+  const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
   const [nodePortStatus, setNodePortStatus] = useState<Record<number, { checking: boolean, available: boolean | null }>>({});
 
   useEffect(() => {
@@ -47,15 +117,52 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
     setStep(0);
     setError(null);
     setNodePortStatus({});
-    setFormData((prev) => ({ ...prev, namespace: currentNamespace || prev.namespace }));
+    setFormState((prev) => ({
+      ...prev,
+      namespace: currentNamespace || prev.namespace,
+      services: prev.services.length ? prev.services : [initialService()]
+    }));
     if (namespaces.length === 0 && !namespacesLoading) {
       fetchNamespaces();
     }
   }, [isOpen]);
 
+  const toggleService = (id: string) => {
+    setExpandedServices(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleContainer = (id: string) => {
+    setExpandedContainers(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const updateService = (sIdx: number, updater: (s: ServiceState) => ServiceState) => {
+    setFormState(prev => {
+      const next = [...prev.services];
+      next[sIdx] = updater(next[sIdx]);
+      return { ...prev, services: next };
+    });
+  };
+
+  const updateContainer = (sIdx: number, cIdx: number, updater: (c: ContainerState) => ContainerState) => {
+    updateService(sIdx, s => {
+      const nextC = [...s.containers];
+      nextC[cIdx] = updater(nextC[cIdx]);
+      return { ...s, containers: nextC };
+    });
+  };
+
   const handleNodePortCheck = async (port: number) => {
     if (!port || port < 30000 || port > 32767) return;
-    
     setNodePortStatus(prev => ({ ...prev, [port]: { checking: true, available: null } }));
     try {
       const available = await api.checkNodePort(port);
@@ -65,63 +172,67 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
     }
   };
 
-  const handleListChange = (
-    list: { key: string; value: string }[],
-    setList: React.Dispatch<React.SetStateAction<{ key: string; value: string }[]>>,
-    index: number,
-    field: 'key' | 'value',
-    val: string
-  ) => {
-    const newList = [...list];
-    newList[index][field] = val;
-    setList(newList);
-  };
-
-  const addToList = (
-    list: { key: string; value: string }[],
-    setList: React.Dispatch<React.SetStateAction<{ key: string; value: string }[]>>
-  ) => {
-    setList([...list, { key: '', value: '' }]);
-  };
-
-  const removeFromList = (
-    list: { key: string; value: string }[],
-    setList: React.Dispatch<React.SetStateAction<{ key: string; value: string }[]>>,
-    index: number
-  ) => {
-    const newList = [...list];
-    newList.splice(index, 1);
-    setList(newList);
-  };
-
   const toMap = (list: { key: string; value: string }[]) => {
     return list.reduce((acc, curr) => {
-      if (curr.key) acc[curr.key] = curr.value;
+      const k = curr.key.trim();
+      if (k) acc[k] = curr.value;
       return acc;
     }, {} as Record<string, string>);
   };
 
   const buildCommand = (): DeployCommand => {
     return {
-      ...formData,
-      port: formData.ports[0].port, // Keep for legacy backend compatibility
-      enableService: true, // Auto-enable service since we manage it at port level
-      env: toMap(envList),
-      configs: toMap(configList),
-      secrets: toMap(secretList),
-      configMounts: configMountList.filter(cm => cm.configMapName && cm.mountPath && (!cm.subPath || cm.key)),
-      secretMounts: secretMountList.filter(sm => sm.secretName && sm.mountPath && (!sm.subPath || sm.key)),
-      livenessProbe: { path: '/healthz', port: formData.ports[0].port, initialDelaySeconds: 15, periodSeconds: 10 },
-      readinessProbe: { path: '/ready', port: formData.ports[0].port, initialDelaySeconds: 5, periodSeconds: 10 },
+      name: formState.name,
+      namespace: formState.namespace,
+      description: formState.description,
+      services: formState.services.map(s => ({
+        name: s.name,
+        replicas: s.replicas,
+        maxReplicas: s.maxReplicas,
+        targetCpuUtilization: s.targetCpuUtilization,
+        targetMemoryUtilization: s.targetMemoryUtilization,
+        enableService: s.enableService,
+        serviceType: s.serviceType,
+        enableIngress: s.enableIngress,
+        ingressDomain: s.ingressDomain,
+        nodeSelector: toMap(s.nodeSelectorRows),
+        affinityJson: s.affinityJson,
+        tolerationsJson: s.tolerationsJson,
+        containers: s.containers.map(c => {
+          const mainPort = c.ports[0]?.port;
+          return {
+            name: c.name,
+            image: c.image,
+            port: mainPort,
+            ports: c.ports.map(p => ({
+              port: p.port,
+              protocol: p.protocol,
+              enableNodePort: p.enableNodePort,
+              nodePort: p.nodePort
+            })),
+            env: toMap(c.envList),
+            configs: toMap(c.configList),
+            secrets: toMap(c.secretList),
+            configMounts: c.configMounts.filter(cm => cm.configMapName && cm.mountPath && (!cm.subPath || cm.key)),
+            secretMounts: c.secretMounts.filter(sm => sm.secretName && sm.mountPath && (!sm.subPath || sm.key)),
+            livenessProbe: mainPort ? { path: '/healthz', port: mainPort, initialDelaySeconds: 15, periodSeconds: 10 } : undefined,
+            readinessProbe: mainPort ? { path: '/ready', port: mainPort, initialDelaySeconds: 5, periodSeconds: 10 } : undefined,
+            requestsCpu: c.requestsCpu || undefined,
+            requestsMemory: c.requestsMemory || undefined,
+            limitsCpu: c.limitsCpu || undefined,
+            limitsMemory: c.limitsMemory || undefined,
+          };
+        })
+      }))
     };
   };
 
-  const commandPreview = useMemo(() => buildCommand(), [formData, envList, configList, secretList, configMountList, secretMountList]);
+  const commandPreview = useMemo(() => buildCommand(), [formState]);
 
   if (!isOpen) return null;
 
   const namespaceOptions = namespaces.length > 0 ? namespaces.map((ns) => ns.name) : ['default', 'kube-system', 'monitoring'];
-  const namespaceInOptions = namespaceOptions.includes(formData.namespace);
+  const namespaceInOptions = namespaceOptions.includes(formState.namespace);
 
   const validateJson = (text: string | undefined) => {
     const trimmed = (text ?? '').trim();
@@ -136,52 +247,48 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
 
   const getStepError = (currentStep: number) => {
     if (currentStep === 0) {
-      if (!formData.name?.trim()) return '应用名称不能为空';
-      if (!formData.namespace?.trim()) return 'Namespace 不能为空';
-      if (!formData.image?.trim()) return '镜像不能为空';
-      if (!Number.isFinite(formData.replicas) || formData.replicas < 0) return 'Replicas 不能小于 0';
-      if (!Number.isFinite(formData.maxReplicas) || formData.maxReplicas < formData.replicas) return 'Max Replicas 不能小于 Replicas';
+      if (!formState.name?.trim()) return '应用名称不能为空';
+      if (!formState.namespace?.trim()) return 'Namespace 不能为空';
     }
 
     if (currentStep === 1) {
-      if (!formData.ports || formData.ports.length === 0) return '至少配置一个端口';
+      if (formState.services.length === 0) return '至少需要一个 Service';
       
-      const containerPorts = new Set<number>();
       const nodePorts = new Set<number>();
-      
-      for (const p of formData.ports) {
-        if (!Number.isFinite(p.port) || p.port < 1 || p.port > 65535) return '端口必须在 1-65535 之间';
-        if (containerPorts.has(p.port)) return `容器端口 ${p.port} 重复配置`;
-        containerPorts.add(p.port);
+      for (const s of formState.services) {
+        if (!s.name?.trim()) return 'Service 名称不能为空';
+        if (!Number.isFinite(s.replicas) || s.replicas < 0) return `Service ${s.name} Replicas 不能小于 0`;
+        if (!Number.isFinite(s.maxReplicas) || s.maxReplicas < s.replicas) return `Service ${s.name} Max Replicas 不能小于 Replicas`;
+        if (s.enableIngress && !s.ingressDomain?.trim()) return `Service ${s.name} 启用 Ingress 时必须填写域名`;
         
-        if (p.enableNodePort && p.nodePort !== undefined) {
-          if (p.nodePort < 30000 || p.nodePort > 32767) return 'NodePort 必须在 30000-32767 之间';
-          if (nodePorts.has(p.nodePort)) return `NodePort ${p.nodePort} 在当前表单中重复配置`;
-          nodePorts.add(p.nodePort);
-          if (nodePortStatus[p.nodePort]?.available === false) return `NodePort ${p.nodePort} 已被集群内其他服务占用`;
+        if (validateJson(s.affinityJson)) return `Service ${s.name} affinityJson 格式错误`;
+        if (validateJson(s.tolerationsJson)) return `Service ${s.name} tolerationsJson 格式错误`;
+
+        if (s.containers.length === 0) return `Service ${s.name} 至少需要一个 Container`;
+
+        for (const c of s.containers) {
+          if (!c.name?.trim()) return `Container 名称不能为空 (in Service ${s.name})`;
+          if (!c.image?.trim()) return `Container ${c.name} 镜像不能为空`;
+          
+          for (const p of c.ports) {
+            if (!Number.isFinite(p.port) || p.port < 1 || p.port > 65535) return `Container ${c.name} 端口必须在 1-65535 之间`;
+            if (p.enableNodePort && p.nodePort !== undefined) {
+              if (p.nodePort < 30000 || p.nodePort > 32767) return `NodePort 必须在 30000-32767 之间`;
+              if (nodePorts.has(p.nodePort)) return `NodePort ${p.nodePort} 在当前表单中重复配置`;
+              nodePorts.add(p.nodePort);
+              if (nodePortStatus[p.nodePort]?.available === false) return `NodePort ${p.nodePort} 已被占用`;
+            }
+          }
         }
       }
-      if (formData.enableIngress && !formData.ingressDomain?.trim()) return '启用 Ingress 时必须填写域名 (Host)';
-    }
-
-    if (currentStep === 2) {
-      if (validateJson(formData.affinityJson)) return 'affinityJson JSON 格式错误';
-      if (validateJson(formData.tolerationsJson)) return 'tolerationsJson JSON 格式错误';
-    }
-
-    if (currentStep === 3) {
-      const cpu = formData.targetCpuUtilization;
-      const mem = formData.targetMemoryUtilization;
-      if (cpu !== undefined && (!Number.isFinite(cpu) || cpu < 1 || cpu > 100)) return 'Target CPU (%) 必须在 1-100 之间';
-      if (mem !== undefined && (!Number.isFinite(mem) || mem < 1 || mem > 100)) return 'Target Memory (%) 必须在 1-100 之间';
     }
 
     return null;
   };
 
   const validateStep = (currentStep: number) => {
-    if (currentStep === 4) {
-      for (let i = 0; i < 4; i++) {
+    if (currentStep === 2) {
+      for (let i = 0; i < 2; i++) {
         const err = getStepError(i);
         if (err) {
           setError(err);
@@ -213,7 +320,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep(4)) return;
+    if (!validateStep(2)) return;
 
     setLoading(true);
     try {
@@ -226,9 +333,67 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
     }
   };
 
+  const renderKeyValueList = (
+    list: { key: string; value: string }[],
+    onChange: (list: { key: string; value: string }[]) => void,
+    placeholderKey: string = 'KEY',
+    placeholderValue: string = 'VALUE'
+  ) => {
+    return (
+      <div className="space-y-2">
+        {list.map((item, i) => (
+          <div key={i} className="flex items-center space-x-2">
+            <input
+              type="text"
+              placeholder={placeholderKey}
+              className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 font-mono text-sm outline-none"
+              value={item.key}
+              onChange={(e) => {
+                const next = [...list];
+                next[i].key = e.target.value;
+                onChange(next);
+              }}
+            />
+            <span className="text-slate-400">=</span>
+            <input
+              type="text"
+              placeholder={placeholderValue}
+              className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 font-mono text-sm outline-none"
+              value={item.value}
+              onChange={(e) => {
+                const next = [...list];
+                next[i].value = e.target.value;
+                onChange(next);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const next = [...list];
+                next.splice(i, 1);
+                onChange(next);
+              }}
+              className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChange([...list, { key: '', value: '' }])}
+          className="text-xs flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
+        >
+          <Plus size={14} />
+          <span>Add Entry</span>
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50">
           <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Deploy New Application</h2>
           <button onClick={onClose} className="p-2 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
@@ -238,19 +403,19 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
 
         <div className="flex-1 overflow-y-auto p-6">
           <form id="deploy-form" onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 max-w-2xl mx-auto mb-8">
               {steps.map((label, i) => (
                 <div key={label} className="flex items-center flex-1 min-w-0">
-                  <div className="flex flex-col items-center min-w-0">
+                  <div className="flex flex-col items-center min-w-0 w-full">
                     <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
                         i <= step ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                       }`}
                     >
                       {i + 1}
                     </div>
                     <div
-                      className={`mt-1 text-[11px] font-medium text-center truncate w-20 ${
+                      className={`mt-2 text-xs font-medium text-center truncate w-full ${
                         i === step ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'
                       }`}
                       title={label}
@@ -259,49 +424,48 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                     </div>
                   </div>
                   {i < steps.length - 1 && (
-                    <div className={`flex-1 h-px mx-2 ${i < step ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                    <div className={`flex-1 h-0.5 mx-2 ${i < step ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'}`} />
                   )}
                 </div>
               ))}
             </div>
 
             {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
+              <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400 mb-6">
                 {error}
               </div>
             )}
+
             {step === 0 && (
-              <div className="space-y-6">
+              <div className="space-y-6 max-w-2xl mx-auto">
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Application Name</label>
                     <input
                       type="text"
-                      placeholder="e.g. my-nginx"
-                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow outline-none"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="e.g. my-app"
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      value={formState.name}
+                      onChange={(e) => setFormState({ ...formState, name: e.target.value })}
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Namespace</label>
                     <div className="space-y-2">
                       <select
-                        value={namespaceInOptions ? formData.namespace : '__custom__'}
+                        value={namespaceInOptions ? formState.namespace : '__custom__'}
                         onChange={(e) => {
                           const v = e.target.value;
                           if (v === '__custom__') {
-                            setFormData({ ...formData, namespace: '' });
+                            setFormState({ ...formState, namespace: '' });
                             return;
                           }
-                          setFormData({ ...formData, namespace: v });
+                          setFormState({ ...formState, namespace: v });
                         }}
-                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow outline-none"
+                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                       >
                         {namespaceOptions.map((ns) => (
-                          <option key={ns} value={ns}>
-                            {ns}
-                          </option>
+                          <option key={ns} value={ns}>{ns}</option>
                         ))}
                         <option value="__custom__">Custom…</option>
                       </select>
@@ -309,500 +473,390 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                         <input
                           type="text"
                           placeholder="e.g. my-namespace"
-                          className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow outline-none"
-                          value={formData.namespace}
-                          onChange={(e) => setFormData({ ...formData, namespace: e.target.value })}
+                          className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          value={formState.namespace}
+                          onChange={(e) => setFormState({ ...formState, namespace: e.target.value })}
                         />
                       )}
                     </div>
                   </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Docker Image</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. nginx:latest"
-                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow outline-none font-mono"
-                    value={formData.image}
-                    onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Description</label>
+                  <textarea
+                    placeholder="Optional description..."
+                    rows={3}
+                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    value={formState.description}
+                    onChange={(e) => setFormState({ ...formState, description: e.target.value })}
                   />
-                </div>
-
-
-
-                <div className="grid grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Replicas</label>
-                    <input
-                      type="number"
-                      min="0"
-                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      value={formData.replicas}
-                      onChange={(e) => setFormData({ ...formData, replicas: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Max Replicas</label>
-                    <input
-                      type="number"
-                      min={formData.replicas}
-                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      value={formData.maxReplicas}
-                      onChange={(e) => setFormData({ ...formData, maxReplicas: Number(e.target.value) })}
-                    />
-                  </div>
                 </div>
               </div>
             )}
 
             {step === 1 && (
               <div className="space-y-6">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    Port Configuration & Service
-                  </h3>
-                  <div className="col-span-3">
-                    <div className="mb-2">
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Container Ports</label>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        这是容器内部监听的端口。可通过开启 NodePort 精确控制该端口是否映射到宿主机对外暴露。
-                      </p>
-                    </div>
-                    <div className="space-y-3">
-                      {formData.ports.map((portSpec, index) => (
-                        <div key={index} className="flex items-center space-x-3">
-                          <input
-                            type="number"
-                            min="1"
-                            max="65535"
-                            placeholder="Port (e.g. 80)"
-                            className="flex-1 px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            value={portSpec.port || ''}
-                            onChange={(e) => {
-                              const newPorts = [...formData.ports];
-                              newPorts[index].port = Number(e.target.value);
-                              setFormData({ ...formData, ports: newPorts });
-                            }}
-                          />
-                          <select
-                            className="w-24 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                            value={portSpec.protocol}
-                            onChange={(e) => {
-                              const newPorts = [...formData.ports];
-                              newPorts[index].protocol = e.target.value as 'TCP' | 'UDP';
-                              setFormData({ ...formData, ports: newPorts });
-                            }}
-                          >
-                            <option value="TCP">TCP</option>
-                            <option value="UDP">UDP</option>
-                          </select>
-                          
-                          <div className="flex items-center space-x-2 px-2">
-                            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">NodePort</span>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                              <input
-                                type="checkbox"
-                                className="sr-only peer"
-                                checked={!!portSpec.enableNodePort}
-                                onChange={(e) => {
-                                  const newPorts = [...formData.ports];
-                                  newPorts[index].enableNodePort = e.target.checked;
-                                  if (!e.target.checked) newPorts[index].nodePort = undefined;
-                                  setFormData({ ...formData, ports: newPorts });
-                                }}
-                              />
-                              <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-                            </label>
-                          </div>
-
-                          {portSpec.enableNodePort && (
-                            <div className="relative group">
-                              <input
-                                type="number"
-                                min="30000"
-                                max="32767"
-                                placeholder="Auto"
-                                className={`w-28 pl-3 pr-8 py-2 bg-slate-50 dark:bg-slate-900 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm transition-colors ${
-                                  portSpec.nodePort && nodePortStatus[portSpec.nodePort]
-                                    ? nodePortStatus[portSpec.nodePort].checking
-                                      ? 'border-blue-300 dark:border-blue-700'
-                                      : nodePortStatus[portSpec.nodePort].available === true
-                                        ? 'border-emerald-500 dark:border-emerald-500 focus:ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20'
-                                        : nodePortStatus[portSpec.nodePort].available === false
-                                          ? 'border-red-500 dark:border-red-500 focus:ring-red-500 bg-red-50/50 dark:bg-red-900/20'
-                                          : 'border-slate-300 dark:border-slate-600'
-                                    : 'border-slate-300 dark:border-slate-600'
-                                }`}
-                                value={portSpec.nodePort || ''}
-                                onChange={(e) => {
-                                  const newPorts = [...formData.ports];
-                                  const val = e.target.value;
-                                  const portNum = val ? Number(val) : undefined;
-                                  newPorts[index].nodePort = portNum;
-                                  setFormData({ ...formData, ports: newPorts });
-                                  
-                                  if (portNum && portNum >= 30000 && portNum <= 32767) {
-                                    handleNodePortCheck(portNum);
-                                  }
-                                }}
-                              />
-                              {portSpec.nodePort && nodePortStatus[portSpec.nodePort] && (
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
-                                  {nodePortStatus[portSpec.nodePort].checking ? (
-                                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                                  ) : nodePortStatus[portSpec.nodePort].available === true ? (
-                                    <CheckCircle2 size={16} className="text-emerald-500" />
-                                  ) : nodePortStatus[portSpec.nodePort].available === false ? (
-                                    <AlertCircle size={16} className="text-red-500" />
-                                  ) : null}
-                                </div>
-                              )}
-                              
-                              {/* Tooltip for conflict */}
-                              {portSpec.nodePort && nodePortStatus[portSpec.nodePort]?.available === false && (
-                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 bg-red-600 text-white text-xs rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                                  Port {portSpec.nodePort} in use
-                                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-red-600"></div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (formData.ports.length > 1) {
-                                const newPorts = formData.ports.filter((_, i) => i !== index);
-                                setFormData({ ...formData, ports: newPorts });
-                              }
-                            }}
-                            className="p-2 text-slate-400 hover:text-red-500 disabled:opacity-50"
-                            disabled={formData.ports.length === 1}
-                          >
-                            <X size={20} />
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, ports: [...formData.ports, { port: 8080, protocol: 'TCP' }] })}
-                        className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center mt-2"
-                      >
-                        <Plus size={16} className="mr-1" /> Add Port
-                      </button>
-                    </div>
-                  </div>
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100">Services</h3>
+                  <button
+                    type="button"
+                    onClick={() => setFormState(prev => ({ ...prev, services: [...prev.services, initialService()] }))}
+                    className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+                  >
+                    <Plus size={16} /> <span>Add Service</span>
+                  </button>
                 </div>
 
-                <div className="space-y-4 pt-4">
-                  <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    Routing
-                  </h3>
+                <div className="space-y-4">
+                  {formState.services.map((svc, sIdx) => {
+                    const isSvcExpanded = expandedServices.has(svc.id) || formState.services.length === 1;
+                    return (
+                      <div key={svc.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
+                        <div 
+                          className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
+                          onClick={() => toggleService(svc.id)}
+                        >
+                          <div className="flex items-center space-x-3">
+                            {isSvcExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">{svc.name || 'Unnamed Service'}</span>
+                            <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">{svc.containers.length} containers</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFormState(prev => ({ ...prev, services: prev.services.filter((_, i) => i !== sIdx) }));
+                            }}
+                            className="p-1.5 text-red-500 hover:bg-red-100 rounded transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
 
-                  <div className="pl-4 space-y-4 animate-in fade-in slide-in-from-left-2">
-                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                      <div>
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Enable External Access (Ingress)</label>
-                        <p className="text-xs text-slate-500">Expose the application to the internet via a domain name.</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="sr-only peer"
-                          checked={formData.enableIngress}
-                          onChange={(e) => setFormData({ ...formData, enableIngress: e.target.checked })}
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-                      </label>
-                    </div>
+                        {isSvcExpanded && (
+                          <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-6">
+                            {/* Service Info */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Service Name</label>
+                                <input
+                                  type="text"
+                                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                  value={svc.name}
+                                  onChange={(e) => updateService(sIdx, s => ({ ...s, name: e.target.value }))}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Replicas</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                  value={svc.replicas}
+                                  onChange={(e) => updateService(sIdx, s => ({ ...s, replicas: Number(e.target.value) }))}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Max Replicas</label>
+                                <input
+                                  type="number"
+                                  min={svc.replicas}
+                                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                  value={svc.maxReplicas}
+                                  onChange={(e) => updateService(sIdx, s => ({ ...s, maxReplicas: Number(e.target.value) }))}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Target CPU/Mem (%)</label>
+                                <div className="flex space-x-2">
+                                  <input
+                                    type="number"
+                                    min="1" max="100" placeholder="CPU"
+                                    className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                    value={svc.targetCpuUtilization || ''}
+                                    onChange={(e) => updateService(sIdx, s => ({ ...s, targetCpuUtilization: e.target.value ? Number(e.target.value) : undefined }))}
+                                  />
+                                  <input
+                                    type="number"
+                                    min="1" max="100" placeholder="Mem"
+                                    className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                    value={svc.targetMemoryUtilization || ''}
+                                    onChange={(e) => updateService(sIdx, s => ({ ...s, targetMemoryUtilization: e.target.value ? Number(e.target.value) : undefined }))}
+                                  />
+                                </div>
+                              </div>
+                            </div>
 
-                    {formData.enableIngress && (
-                      <div className="pl-4 border-l-2 border-purple-500 animate-in fade-in slide-in-from-left-2">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Domain (Host)</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. app.example.com"
-                          value={formData.ingressDomain}
-                          onChange={(e) => setFormData({ ...formData, ingressDomain: e.target.value })}
-                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                        />
+                            {/* Service Routing */}
+                            <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                              <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Routing & Ingress</h4>
+                              <div className="flex items-center space-x-6">
+                                <label className="flex items-center space-x-2 cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    checked={svc.enableService}
+                                    onChange={(e) => updateService(sIdx, s => ({ ...s, enableService: e.target.checked }))}
+                                  />
+                                  <span className="text-sm text-slate-600 dark:text-slate-400">Enable Service</span>
+                                </label>
+                                <label className="flex items-center space-x-2 cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    checked={svc.enableIngress}
+                                    onChange={(e) => updateService(sIdx, s => ({ ...s, enableIngress: e.target.checked }))}
+                                  />
+                                  <span className="text-sm text-slate-600 dark:text-slate-400">Enable Ingress</span>
+                                </label>
+                                {svc.enableIngress && (
+                                  <input
+                                    type="text"
+                                    placeholder="Ingress Domain (e.g. app.domain.com)"
+                                    className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                    value={svc.ingressDomain}
+                                    onChange={(e) => updateService(sIdx, s => ({ ...s, ingressDomain: e.target.value }))}
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Containers List */}
+                            <div>
+                              <div className="flex justify-between items-center mb-3">
+                                <h4 className="text-sm font-medium text-slate-800 dark:text-slate-200">Containers</h4>
+                                <button
+                                  type="button"
+                                  onClick={() => updateService(sIdx, s => ({ ...s, containers: [...s.containers, initialContainer()] }))}
+                                  className="text-xs flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
+                                >
+                                  <Plus size={14} /> <span>Add Container</span>
+                                </button>
+                              </div>
+                              <div className="space-y-3">
+                                {svc.containers.map((cnt, cIdx) => {
+                                  const isCntExpanded = expandedContainers.has(cnt.id) || svc.containers.length === 1;
+                                  return (
+                                    <div key={cnt.id} className="border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 overflow-hidden">
+                                      <div 
+                                        className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900/50 cursor-pointer"
+                                        onClick={() => toggleContainer(cnt.id)}
+                                      >
+                                        <div className="flex items-center space-x-2">
+                                          {isCntExpanded ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}
+                                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{cnt.name || 'Unnamed'}</span>
+                                          <span className="text-xs text-slate-500 font-mono truncate max-w-[200px]">{cnt.image}</span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            updateService(sIdx, s => ({ ...s, containers: s.containers.filter((_, i) => i !== cIdx) }));
+                                          }}
+                                          className="p-1 text-red-500 hover:bg-red-100 rounded transition-colors"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                      
+                                      {isCntExpanded && (
+                                        <div className="p-3 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                                          <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                              <label className="block text-xs font-medium text-slate-500 mb-1">Name</label>
+                                              <input
+                                                type="text"
+                                                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                value={cnt.name}
+                                                onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, name: e.target.value }))}
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-slate-500 mb-1">Image</label>
+                                              <input
+                                                type="text"
+                                                placeholder="e.g. nginx:latest"
+                                                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
+                                                value={cnt.image}
+                                                onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, image: e.target.value }))}
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Ports */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-slate-500 mb-1">Ports</label>
+                                            <div className="space-y-2">
+                                              {cnt.ports.map((p, pIdx) => (
+                                                <div key={pIdx} className="flex items-center space-x-2">
+                                                  <input
+                                                    type="number" min="1" max="65535" placeholder="Port"
+                                                    className="w-24 px-2 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-sm outline-none"
+                                                    value={p.port || ''}
+                                                    onChange={(e) => {
+                                                      const val = Number(e.target.value);
+                                                      updateContainer(sIdx, cIdx, c => {
+                                                        const next = [...c.ports];
+                                                        next[pIdx] = { ...next[pIdx], port: val };
+                                                        return { ...c, ports: next };
+                                                      });
+                                                    }}
+                                                  />
+                                                  <select
+                                                    className="w-20 px-2 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-sm outline-none"
+                                                    value={p.protocol}
+                                                    onChange={(e) => {
+                                                      const val = e.target.value as 'TCP'|'UDP';
+                                                      updateContainer(sIdx, cIdx, c => {
+                                                        const next = [...c.ports];
+                                                        next[pIdx] = { ...next[pIdx], protocol: val };
+                                                        return { ...c, ports: next };
+                                                      });
+                                                    }}
+                                                  >
+                                                    <option value="TCP">TCP</option>
+                                                    <option value="UDP">UDP</option>
+                                                  </select>
+                                                  <label className="flex items-center space-x-1 text-xs">
+                                                    <input 
+                                                      type="checkbox"
+                                                      checked={!!p.enableNodePort}
+                                                      onChange={(e) => {
+                                                        const chk = e.target.checked;
+                                                        updateContainer(sIdx, cIdx, c => {
+                                                          const next = [...c.ports];
+                                                          next[pIdx] = { ...next[pIdx], enableNodePort: chk, nodePort: chk ? next[pIdx].nodePort : undefined };
+                                                          return { ...c, ports: next };
+                                                        });
+                                                      }}
+                                                    />
+                                                    <span>NodePort</span>
+                                                  </label>
+                                                  {p.enableNodePort && (
+                                                    <input
+                                                      type="number" min="30000" max="32767" placeholder="Auto"
+                                                      className="w-24 px-2 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded text-sm outline-none"
+                                                      value={p.nodePort || ''}
+                                                      onChange={(e) => {
+                                                        const val = Number(e.target.value);
+                                                        updateContainer(sIdx, cIdx, c => {
+                                                          const next = [...c.ports];
+                                                          next[pIdx] = { ...next[pIdx], nodePort: val || undefined };
+                                                          return { ...c, ports: next };
+                                                        });
+                                                        if (val >= 30000 && val <= 32767) handleNodePortCheck(val);
+                                                      }}
+                                                    />
+                                                  )}
+                                                  <button type="button" onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, ports: c.ports.filter((_, i) => i !== pIdx) }))} className="p-1 text-red-500">
+                                                    <X size={16} />
+                                                  </button>
+                                                </div>
+                                              ))}
+                                              <button type="button" onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, ports: [...c.ports, { port: 8080, protocol: 'TCP' }] }))} className="text-xs text-blue-600 hover:underline">
+                                                + Add Port
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          <div className="grid grid-cols-1 gap-4">
+                                            {/* Env */}
+                                            <div>
+                                              <label className="block text-xs font-medium text-slate-500 mb-1">Environment Variables</label>
+                                              {renderKeyValueList(cnt.envList, (l) => updateContainer(sIdx, cIdx, c => ({ ...c, envList: l })))}
+                                            </div>
+                                          </div>
+
+                                          {/* Resources */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-slate-500 mb-1">Resources</label>
+                                            <div className="grid grid-cols-4 gap-2">
+                                              <input type="text" placeholder="Req CPU (e.g. 100m)" className="px-2 py-1 border rounded text-xs" value={cnt.requestsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: e.target.value }))} />
+                                              <input type="text" placeholder="Req Mem (e.g. 128Mi)" className="px-2 py-1 border rounded text-xs" value={cnt.requestsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsMemory: e.target.value }))} />
+                                              <input type="text" placeholder="Lim CPU (e.g. 500m)" className="px-2 py-1 border rounded text-xs" value={cnt.limitsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsCpu: e.target.value }))} />
+                                              <input type="text" placeholder="Lim Mem (e.g. 256Mi)" className="px-2 py-1 border rounded text-xs" value={cnt.limitsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsMemory: e.target.value }))} />
+                                            </div>
+                                          </div>
+
+                                          {/* Mounts */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-slate-500 mb-1">Volume Mounts</label>
+                                            <ConfigMountSection
+                                              namespace={formState.namespace}
+                                              configMounts={cnt.configMounts}
+                                              setConfigMounts={(cm) => updateContainer(sIdx, cIdx, c => ({ ...c, configMounts: typeof cm === 'function' ? cm(c.configMounts) : cm }))}
+                                              secretMounts={cnt.secretMounts}
+                                              setSecretMounts={(sm) => updateContainer(sIdx, cIdx, c => ({ ...c, secretMounts: typeof sm === 'function' ? sm(c.secretMounts) : sm }))}
+                                            />
+                                          </div>
+
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            
+                            {/* Scheduling */}
+                            <div>
+                               <label className="block text-xs font-medium text-slate-500 mb-1">Scheduling (nodeSelector, affinity, tolerations)</label>
+                               <div className="space-y-2">
+                                  {renderKeyValueList(svc.nodeSelectorRows, (l) => updateService(sIdx, s => ({ ...s, nodeSelectorRows: l })), 'Label KEY', 'VALUE')}
+                                  <textarea placeholder='affinityJson e.g. {"nodeAffinity": {...}}' className="w-full px-2 py-1 border rounded text-xs font-mono" rows={2} value={svc.affinityJson} onChange={(e) => updateService(sIdx, s => ({ ...s, affinityJson: e.target.value }))} />
+                                  <textarea placeholder='tolerationsJson e.g. [{"key":"dedicated","operator":"Equal","value":"gpu","effect":"NoSchedule"}]' className="w-full px-2 py-1 border rounded text-xs font-mono" rows={2} value={svc.tolerationsJson} onChange={(e) => updateService(sIdx, s => ({ ...s, tolerationsJson: e.target.value }))} />
+                               </div>
+                            </div>
+
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
             {step === 2 && (
-              <ResourcesSchedulingSection
-                value={{
-                  requestsCpu: formData.requestsCpu ?? '',
-                  requestsMemory: formData.requestsMemory ?? '',
-                  limitsCpu: formData.limitsCpu ?? '',
-                  limitsMemory: formData.limitsMemory ?? '',
-                  nodeSelector: formData.nodeSelector,
-                  affinityJson: formData.affinityJson ?? '',
-                  tolerationsJson: formData.tolerationsJson ?? '',
-                }}
-                onChange={(next) => setFormData((prev) => ({ ...prev, ...next }))}
-                namespaceName={formData.namespace}
-              />
-            )}
-
-            {step === 3 && (
-              <div className="space-y-6">
-                <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center justify-between mb-4">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Environment Variables</label>
-                    <button
-                      type="button"
-                      onClick={() => addToList(envList, setEnvList)}
-                      className="text-sm flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      <Plus size={16} />
-                      <span>Add Variable</span>
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {envList.length === 0 && (
-                      <div className="text-sm text-slate-400 italic text-center py-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
-                        No environment variables configured.
-                      </div>
-                    )}
-                    {envList.map((env, i) => (
-                      <div key={i} className="flex items-center space-x-3">
-                        <input
-                          type="text"
-                          placeholder="KEY"
-                          className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm outline-none"
-                          value={env.key}
-                          onChange={(e) => handleListChange(envList, setEnvList, i, 'key', e.target.value)}
-                        />
-                        <span className="text-slate-400">=</span>
-                        <input
-                          type="text"
-                          placeholder="VALUE"
-                          className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm outline-none"
-                          value={env.value}
-                          onChange={(e) => handleListChange(envList, setEnvList, i, 'value', e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeFromList(envList, setEnvList, i)}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Target CPU (%)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                      value={formData.targetCpuUtilization ?? ''}
-                      onChange={(e) => setFormData({ ...formData, targetCpuUtilization: e.target.value ? Number(e.target.value) : undefined })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Target Memory (%)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                      value={formData.targetMemoryUtilization ?? ''}
-                      onChange={(e) => setFormData({ ...formData, targetMemoryUtilization: e.target.value ? Number(e.target.value) : undefined })}
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 mb-4">
-                    配置管理
-                  </h3>
-                  <ConfigMountSection
-                    namespace={formData.namespace}
-                    configMounts={configMountList}
-                    setConfigMounts={setConfigMountList}
-                    secretMounts={secretMountList}
-                    setSecretMounts={setSecretMountList}
-                  />
-                </div>
-
-                <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center justify-between mb-4">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">ConfigMap Entries</label>
-                    <button
-                      type="button"
-                      onClick={() => addToList(configList, setConfigList)}
-                      className="text-sm flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      <Plus size={16} />
-                      <span>Add Config</span>
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {configList.length === 0 && (
-                      <div className="text-sm text-slate-400 italic text-center py-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
-                        No config entries configured.
-                      </div>
-                    )}
-                    {configList.map((env, i) => (
-                      <div key={i} className="flex items-center space-x-3">
-                        <input
-                          type="text"
-                          placeholder="KEY"
-                          className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm outline-none"
-                          value={env.key}
-                          onChange={(e) => handleListChange(configList, setConfigList, i, 'key', e.target.value)}
-                        />
-                        <span className="text-slate-400">=</span>
-                        <input
-                          type="text"
-                          placeholder="VALUE"
-                          className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm outline-none"
-                          value={env.value}
-                          onChange={(e) => handleListChange(configList, setConfigList, i, 'value', e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeFromList(configList, setConfigList, i)}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Secret Entries</label>
-                    <button
-                      type="button"
-                      onClick={() => addToList(secretList, setSecretList)}
-                      className="text-sm flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      <Plus size={16} />
-                      <span>Add Secret</span>
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {secretList.length === 0 && (
-                      <div className="text-sm text-slate-400 italic text-center py-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
-                        No secret entries configured.
-                      </div>
-                    )}
-                    {secretList.map((env, i) => (
-                      <div key={i} className="flex items-center space-x-3">
-                        <input
-                          type="text"
-                          placeholder="KEY"
-                          className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm outline-none"
-                          value={env.key}
-                          onChange={(e) => handleListChange(secretList, setSecretList, i, 'key', e.target.value)}
-                        />
-                        <span className="text-slate-400">=</span>
-                        <input
-                          type="text"
-                          placeholder="VALUE"
-                          className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm outline-none"
-                          value={env.value}
-                          onChange={(e) => handleListChange(secretList, setSecretList, i, 'value', e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeFromList(secretList, setSecretList, i)}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {step === 4 && (
               <div className="space-y-6">
                 <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">Summary</div>
-                  <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Name</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right break-all">{commandPreview.name}</dd>
+                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">Summary</div>
+                  
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 text-sm border-b border-slate-200 dark:border-slate-700 pb-4">
+                      <div>
+                        <span className="text-slate-500 block mb-1">Application</span>
+                        <span className="font-medium text-slate-800 dark:text-slate-100">{commandPreview.name}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block mb-1">Namespace</span>
+                        <span className="font-medium text-slate-800 dark:text-slate-100">{commandPreview.namespace}</span>
+                      </div>
                     </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Namespace</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right break-all">{commandPreview.namespace}</dd>
+                    
+                    <div className="space-y-3">
+                      <span className="text-slate-500 text-sm font-medium">Services ({commandPreview.services.length})</span>
+                      {commandPreview.services.map((svc, i) => (
+                        <div key={i} className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm">
+                          <div className="flex justify-between font-medium mb-2">
+                            <span>{svc.name}</span>
+                            <span>{svc.replicas} / {svc.maxReplicas} Replicas</span>
+                          </div>
+                          <div className="text-slate-500 text-xs mb-2">
+                            {svc.enableIngress ? `Ingress: ${svc.ingressDomain}` : 'No Ingress'}
+                          </div>
+                          <div className="space-y-1">
+                            {svc.containers.map((c, j) => (
+                              <div key={j} className="flex items-center justify-between pl-3 border-l-2 border-slate-200 dark:border-slate-700">
+                                <span className="font-mono text-xs">{c.image}</span>
+                                <span className="text-xs bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded">{c.ports.map(p => p.port).join(', ')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex items-start justify-between gap-3 col-span-2">
-                      <dt className="text-slate-500 dark:text-slate-400">Image</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right break-all font-mono">{commandPreview.image}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Ports</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">
-                        {commandPreview.ports.map(p => `${p.port}/${p.protocol}${p.enableNodePort ? ` (NodePort${p.nodePort ? `: ${p.nodePort}` : ''})` : ''}`).join(', ')}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Replicas</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">
-                        {commandPreview.replicas} / {commandPreview.maxReplicas}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Service</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">
-                        {commandPreview.ports.some(p => p.enableNodePort) ? 'ClusterIP + NodePort' : 'ClusterIP'}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Ingress</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right break-all">
-                        {commandPreview.enableIngress ? commandPreview.ingressDomain : 'Disabled'}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Env</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{Object.keys(commandPreview.env ?? {}).length}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Configs</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{Object.keys(commandPreview.configs ?? {}).length}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Secrets</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{Object.keys(commandPreview.secrets ?? {}).length}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Config Mounts</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{commandPreview.configMounts?.length || 0}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">Secret Mounts</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{commandPreview.secretMounts?.length || 0}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">HPA CPU</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{commandPreview.targetCpuUtilization ?? '-'}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500 dark:text-slate-400">HPA Memory</dt>
-                      <dd className="font-medium text-slate-800 dark:text-slate-100 text-right">{commandPreview.targetMemoryUtilization ?? '-'}</dd>
-                    </div>
-                  </dl>
+                  </div>
                 </div>
 
                 <div>

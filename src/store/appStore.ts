@@ -1,22 +1,22 @@
 import { create } from 'zustand';
-import { api, ApplicationDeployment, DeployCommand } from '@/lib/api';
+import { api, Application, DeployCommand } from '@/lib/api';
 
 interface AppState {
   namespace: string;
-  deployments: ApplicationDeployment[];
+  deployments: Application[];
   loading: boolean;
   error: string | null;
 
   setNamespace: (namespace: string) => void;
   fetchDeployments: () => Promise<void>;
   deploy: (command: DeployCommand) => Promise<void>;
-  scale: (name: string, replicas: number) => Promise<void>;
-  updateImage: (name: string, image: string) => Promise<void>;
+  scale: (name: string, serviceName: string, replicas: number) => Promise<void>;
+  updateImage: (name: string, serviceName: string, containerName: string, image: string) => Promise<void>;
   deleteDeployment: (name: string) => Promise<void>;
   start: (name: string) => Promise<void>;
   stop: (name: string) => Promise<void>;
-  restart: (name: string) => Promise<void>;
-  rollback: (name: string) => Promise<void>;
+  restart: (name: string, serviceName: string) => Promise<void>;
+  rollback: (name: string, serviceName: string) => Promise<void>;
 }
 
 let fetchDeploymentsTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -59,20 +59,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  scale: async (name, replicas) => {
+  scale: async (name, serviceName, replicas) => {
     try {
       const { namespace } = get();
-      await api.scale(namespace, name, replicas);
+      await api.scale(namespace, name, serviceName, replicas);
       get().fetchDeployments();
     } catch (err: any) {
       throw new Error(err.response?.data?.message || err.message || 'Failed to scale');
     }
   },
 
-  updateImage: async (name, image) => {
+  updateImage: async (name, serviceName, containerName, image) => {
     try {
       const { namespace } = get();
-      await api.updateImage(namespace, name, image);
+      await api.updateImage(namespace, name, serviceName, containerName, image);
       get().fetchDeployments();
     } catch (err: any) {
       throw new Error(err.response?.data?.message || err.message || 'Failed to update image');
@@ -109,20 +109,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  restart: async (name) => {
+  restart: async (name, serviceName) => {
     try {
       const { namespace } = get();
-      await api.restart(namespace, name);
+      await api.restart(namespace, name, serviceName);
       get().fetchDeployments();
     } catch (err: any) {
       throw new Error(err.response?.data?.message || err.message || 'Failed to restart deployment');
     }
   },
 
-  rollback: async (name) => {
+  rollback: async (name, serviceName) => {
     try {
       const { namespace } = get();
-      await api.rollback(namespace, name);
+      await api.rollback(namespace, name, serviceName);
       get().fetchDeployments();
     } catch (err: any) {
       throw new Error(err.response?.data?.message || err.message || 'Failed to rollback deployment');

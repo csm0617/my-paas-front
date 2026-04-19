@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { X, RotateCw, AlertCircle } from 'lucide-react';
-import { ApplicationDeployment, K8sEvent, eventApi } from '@/lib/api';
+import { Application, K8sEvent, eventApi } from '@/lib/api';
 
 interface Props {
-  app: ApplicationDeployment | null;
+  app: Application | null;
   isOpen: boolean;
   onClose: () => void;
 }

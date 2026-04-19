@@ -75,42 +75,54 @@ export interface SecretMount {
   defaultMode?: number;
 }
 
-export interface DeployCommand {
+export interface ContainerSpec {
   name: string;
-  namespace: string;
   image: string;
   port?: number;
-  ports: PortSpec[];
-  replicas: number;
-  maxReplicas: number;
-  env: EnvVar;
+  ports?: PortSpec[];
+  env?: EnvVar;
   configs?: EnvVar;
   secrets?: EnvVar;
   configMounts?: ConfigMount[];
   secretMounts?: SecretMount[];
   livenessProbe?: ProbeSpec;
   readinessProbe?: ProbeSpec;
+  requestsCpu?: string;
+  requestsMemory?: string;
+  limitsCpu?: string;
+  limitsMemory?: string;
+}
+
+export interface ApplicationService {
+  name: string;
+  replicas: number;
+  maxReplicas: number;
   targetCpuUtilization?: number;
   targetMemoryUtilization?: number;
   enableService?: boolean;
   serviceType?: string;
   enableIngress?: boolean;
   ingressDomain?: string;
-  requestsCpu?: string;
-  requestsMemory?: string;
-  limitsCpu?: string;
-  limitsMemory?: string;
   nodeSelector?: Record<string, string>;
   affinityJson?: string;
   tolerationsJson?: string;
+  containers: ContainerSpec[];
+  status?: string;
 }
 
-export interface ApplicationDeployment {
+export interface DeployCommand {
+  name: string;
+  namespace: string;
+  description?: string;
+  services: ApplicationService[];
+}
+
+export interface Application {
   id: string;
   name: string;
   namespace: string;
-  image: string;
-  replicas: number;
+  description?: string;
+  services: ApplicationService[];
   status: 'PENDING' | 'RUNNING' | 'FAILED' | 'DELETED' | 'STOPPED';
 }
 
@@ -223,6 +235,7 @@ export interface K8sEvent {
   involvedObjectKind?: string;
   involvedObjectName?: string;
   lastTimestamp?: string;
+  eventTime?: string;
 }
 
 export const eventApi = {
@@ -233,8 +246,8 @@ export const eventApi = {
 };
 
 export const api = {
-  getDeployments: async (namespace: string): Promise<ApplicationDeployment[]> => {
-    const res = await apiClient.get<Result<ApplicationDeployment[]>>(`/applications/deployments/${namespace}`);
+  getDeployments: async (namespace: string): Promise<Application[]> => {
+    const res = await apiClient.get<Result<Application[]>>(`/applications/deployments/${namespace}`);
     return res.data.data;
   },
 
@@ -243,14 +256,14 @@ export const api = {
     return res.data.data;
   },
 
-  scale: async (namespace: string, name: string, replicas: number): Promise<void> => {
-    await apiClient.put(`/applications/deployments/${namespace}/${name}/scale`, null, {
+  scale: async (namespace: string, name: string, serviceName: string, replicas: number): Promise<void> => {
+    await apiClient.put(`/applications/deployments/${namespace}/${name}/${serviceName}/scale`, null, {
       params: { replicas },
     });
   },
 
-  updateImage: async (namespace: string, name: string, image: string): Promise<void> => {
-    await apiClient.put(`/applications/deployments/${namespace}/${name}/image`, null, {
+  updateImage: async (namespace: string, name: string, serviceName: string, containerName: string, image: string): Promise<void> => {
+    await apiClient.put(`/applications/deployments/${namespace}/${name}/${serviceName}/${containerName}/image`, null, {
       params: { image },
     });
   },
@@ -267,16 +280,16 @@ export const api = {
     await apiClient.post(`/applications/deployments/${namespace}/${name}/start`);
   },
 
-  restart: async (namespace: string, name: string): Promise<void> => {
-    await apiClient.post(`/applications/deployments/${namespace}/${name}/restart`);
+  restart: async (namespace: string, name: string, serviceName: string): Promise<void> => {
+    await apiClient.post(`/applications/deployments/${namespace}/${name}/${serviceName}/restart`);
   },
 
-  rollback: async (namespace: string, name: string): Promise<void> => {
-    await apiClient.post(`/applications/deployments/${namespace}/${name}/rollback`);
+  rollback: async (namespace: string, name: string, serviceName: string): Promise<void> => {
+    await apiClient.post(`/applications/deployments/${namespace}/${name}/${serviceName}/rollback`);
   },
 
-  getLogs: async (namespace: string, name: string, tailLines: number = 100): Promise<string> => {
-    const res = await apiClient.get<Result<string>>(`/applications/deployments/${namespace}/${name}/logs`, {
+  getLogs: async (namespace: string, name: string, serviceName: string, tailLines: number = 100): Promise<string> => {
+    const res = await apiClient.get<Result<string>>(`/applications/deployments/${namespace}/${name}/${serviceName}/logs`, {
       params: { tailLines },
     });
     return res.data.data;

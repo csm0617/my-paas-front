@@ -1,21 +1,21 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { ApplicationDeployment, eventApi, K8sEvent, podApi, Pod } from '@/lib/api';
-import { Activity, Box, Cpu, Trash2, Edit3, TerminalSquare, FileText, ArrowUpCircle, Play, Square, RotateCw, Undo2, ChevronDown, ChevronUp, FileCode, ListOrdered } from 'lucide-react';
+import { Application, ApplicationService, eventApi, K8sEvent, podApi, Pod } from '@/lib/api';
+import { Activity, Box, Cpu, Trash2, Edit3, TerminalSquare, FileText, ArrowUpCircle, Play, Square, RotateCw, Undo2, ChevronDown, ChevronUp, FileCode, ListOrdered, Layers } from 'lucide-react';
 import { useK8sWatch } from '@/hooks/useK8sWatch';
 
 interface Props {
-  app: ApplicationDeployment;
-  onScale: (app: ApplicationDeployment) => void;
-  onUpdateImage: (app: ApplicationDeployment) => void;
-  onDelete: (app: ApplicationDeployment) => void;
+  app: Application;
+  onScale: (app: Application, serviceName: string, replicas: number) => void;
+  onUpdateImage: (app: Application, serviceName: string, containerName: string, image: string) => void;
+  onDelete: (app: Application) => void;
   onViewLogs: (pod: Pod) => void;
   onOpenTerminal: (pod: Pod) => void;
-  onStart: (app: ApplicationDeployment) => void;
-  onStop: (app: ApplicationDeployment) => void;
-  onRestart: (app: ApplicationDeployment) => void;
-  onRollback: (app: ApplicationDeployment) => void;
-  onViewYaml: (app: ApplicationDeployment) => void;
-  onViewEvents: (app: ApplicationDeployment) => void;
+  onStart: (app: Application) => void;
+  onStop: (app: Application) => void;
+  onRestart: (app: Application, serviceName: string) => void;
+  onRollback: (app: Application, serviceName: string) => void;
+  onViewYaml: (app: Application) => void;
+  onViewEvents: (app: Application) => void;
 }
 
 export default function ApplicationCard({
@@ -36,27 +36,167 @@ export default function ApplicationCard({
   const isFailed = app.status === 'FAILED';
   const isStopped = app.status === 'STOPPED';
 
+  const [expanded, setExpanded] = useState(false);
+
+  const totalReplicas = app.services.reduce((acc, svc) => acc + svc.replicas, 0);
+  const computedStatus = app.status || 'UNKNOWN';
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm hover:shadow-md border border-slate-200 dark:border-slate-700 transition-all duration-300 overflow-hidden flex flex-col group relative">
+      <div className={`h-1 w-full ${isRunning ? 'bg-emerald-500' : isFailed ? 'bg-red-500' : isStopped ? 'bg-slate-500' : 'bg-amber-400'}`} />
+
+      <div className="p-6 flex-1 flex flex-col">
+        <div className="flex justify-between items-start mb-4">
+          <div className="flex items-center space-x-3">
+            <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-xl text-blue-600 dark:text-blue-400">
+              <Layers size={24} />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">{app.name}</h3>
+              {app.description && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[200px]" title={app.description}>
+                  {app.description}
+                </p>
+              )}
+            </div>
+          </div>
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider flex items-center space-x-1 ${
+              isRunning
+                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                : isFailed
+                ? 'bg-red-50 text-red-600 border border-red-200'
+                : isStopped
+                ? 'bg-slate-50 text-slate-600 border border-slate-200'
+                : 'bg-amber-50 text-amber-600 border border-amber-200'
+            }`}
+          >
+            <Activity size={12} className={isRunning ? 'animate-pulse' : ''} />
+            <span>{computedStatus}</span>
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mt-auto mb-6 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl">
+          <div className="flex flex-col">
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider mb-1">
+              Namespace
+            </span>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
+              {app.namespace}
+            </span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider mb-1 flex items-center space-x-1">
+              <Cpu size={12} />
+              <span>Services</span>
+            </span>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              {app.services.length} ({totalReplicas} Pods)
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-700/50">
+          {isStopped ? (
+            <button
+              onClick={() => onStart(app)}
+              className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 transition-colors"
+              title="Start All"
+            >
+              <Play size={18} />
+            </button>
+          ) : (
+            <button
+              onClick={() => onStop(app)}
+              className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+              title="Stop All"
+            >
+              <Square size={18} />
+            </button>
+          )}
+          <button
+            onClick={() => onViewYaml(app)}
+            className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+            title="View YAML"
+          >
+            <FileCode size={18} />
+          </button>
+          <button
+            onClick={() => onViewEvents(app)}
+            className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+            title="Events"
+          >
+            <ListOrdered size={18} />
+          </button>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className={`flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg transition-colors ${expanded ? 'text-blue-600 bg-blue-50 border-blue-200' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
+            title={expanded ? "Hide Services" : "Show Services"}
+          >
+            {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+          <button
+            onClick={() => onDelete(app)}
+            className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-red-500 hover:bg-red-50 hover:border-red-200 transition-colors ml-auto"
+            title="Delete Application"
+          >
+            <Trash2 size={18} />
+          </button>
+        </div>
+
+        {expanded && (
+          <div className="mt-4 border-t border-slate-100 dark:border-slate-700/50 pt-4 space-y-4">
+            {app.services.map(svc => (
+              <ServiceSubCard
+                key={svc.name}
+                app={app}
+                svc={svc}
+                onScale={onScale}
+                onUpdateImage={onUpdateImage}
+                onRestart={onRestart}
+                onRollback={onRollback}
+                onViewLogs={onViewLogs}
+                onOpenTerminal={onOpenTerminal}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ServiceSubCard({
+  app,
+  svc,
+  onScale,
+  onUpdateImage,
+  onRestart,
+  onRollback,
+  onViewLogs,
+  onOpenTerminal
+}: {
+  app: Application;
+  svc: ApplicationService;
+  onScale: Props['onScale'];
+  onUpdateImage: Props['onUpdateImage'];
+  onRestart: Props['onRestart'];
+  onRollback: Props['onRollback'];
+  onViewLogs: Props['onViewLogs'];
+  onOpenTerminal: Props['onOpenTerminal'];
+}) {
   const [pods, setPods] = useState<Pod[]>([]);
-  const [showPods, setShowPods] = useState(false);
   const [loadingPods, setLoadingPods] = useState(false);
   const [podsError, setPodsError] = useState<string | null>(null);
 
-  const [showEvents, setShowEvents] = useState(false);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-  const [eventsError, setEventsError] = useState<string | null>(null);
-  const [events, setEvents] = useState<K8sEvent[]>([]);
-
   const getErrorMessage = useCallback((err: unknown) => {
     if (typeof err === 'object' && err !== null) {
-      const e = err as {
-        message?: unknown;
-        response?: { data?: { message?: unknown } };
-      };
+      const e = err as { message?: unknown; response?: { data?: { message?: unknown } } };
       const responseMessage = e.response?.data?.message;
       if (typeof responseMessage === 'string' && responseMessage.trim()) return responseMessage;
       if (typeof e.message === 'string' && e.message.trim()) return e.message;
     }
-    return '请求失败';
+    return 'Request failed';
   }, []);
 
   const fetchPodsTimeout = useRef<number | null>(null);
@@ -67,7 +207,8 @@ export default function ApplicationCard({
       try {
         setLoadingPods(true);
         setPodsError(null);
-        const data = await podApi.list(app.namespace, { app: app.name });
+        // Assuming label paas.csm.com/service is used to fetch pods for a specific service
+        const data = await podApi.list(app.namespace, { 'paas.csm.com/service': svc.name });
         setPods(data);
       } catch (err) {
         setPodsError(getErrorMessage(err));
@@ -75,41 +216,14 @@ export default function ApplicationCard({
         setLoadingPods(false);
       }
     }, 300);
-  }, [app.namespace, app.name, getErrorMessage]);
-
-  const fetchEventsTimeout = useRef<number | null>(null);
-
-  const fetchEvents = useCallback(() => {
-    if (fetchEventsTimeout.current) window.clearTimeout(fetchEventsTimeout.current);
-    fetchEventsTimeout.current = window.setTimeout(async () => {
-      try {
-        setLoadingEvents(true);
-        setEventsError(null);
-        const data = await eventApi.list(app.namespace, { limit: 50 });
-        const sorted = [...data].sort((a, b) => (b.lastTimestamp || '').localeCompare(a.lastTimestamp || ''));
-        setEvents(sorted);
-      } catch (err) {
-        setEventsError(getErrorMessage(err));
-      } finally {
-        setLoadingEvents(false);
-      }
-    }, 300);
-  }, [app.namespace, getErrorMessage]);
+  }, [app.namespace, svc.name, getErrorMessage]);
 
   useEffect(() => {
-    if (showPods) {
-      fetchPods();
-    }
-  }, [showPods, fetchPods]);
+    fetchPods();
+  }, [fetchPods]);
 
-  useEffect(() => {
-    if (showPods && showEvents) {
-      fetchEvents();
-    }
-  }, [showPods, showEvents, fetchEvents]);
-
-  useK8sWatch(showPods ? app.namespace : '', (event) => {
-    if (event.type === 'pod' && event.name.startsWith(app.name)) {
+  useK8sWatch(app.namespace, (event) => {
+    if (event.type === 'pod') {
       fetchPods();
     }
   });
@@ -132,217 +246,78 @@ export default function ApplicationCard({
     return reason || message;
   };
 
-  const relatedEvents = (() => {
-    const appName = app.name.toLowerCase();
-    const podNameSet = new Set(pods.map(p => p.name));
-    return events.filter(e => {
-      const involved = (e.involvedObjectName || '').toLowerCase();
-      if (involved.includes(appName)) return true;
-      if (e.involvedObjectName && podNameSet.has(e.involvedObjectName)) return true;
-      const msg = (e.message || '').toLowerCase();
-      const reason = (e.reason || '').toLowerCase();
-      return msg.includes(appName) || reason.includes(appName);
-    });
-  })();
-
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm hover:shadow-md border border-slate-200 dark:border-slate-700 transition-all duration-300 overflow-hidden flex flex-col group relative">
-      <div className={`h-1 w-full ${isRunning ? 'bg-emerald-500' : isFailed ? 'bg-red-500' : isStopped ? 'bg-slate-500' : 'bg-amber-400'}`} />
-
-      <div className="p-6 flex-1 flex flex-col">
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex items-center space-x-3">
-            <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-xl text-blue-600 dark:text-blue-400">
-              <Box size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">{app.name}</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1 flex items-center">
-                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md truncate max-w-[180px]">
-                  {app.image}
-                </span>
-              </p>
-            </div>
-          </div>
-          <span
-            className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider flex items-center space-x-1 ${
-              isRunning
-                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                : isFailed
-                ? 'bg-red-50 text-red-600 border border-red-200'
-                : isStopped
-                ? 'bg-slate-50 text-slate-600 border border-slate-200'
-                : 'bg-amber-50 text-amber-600 border border-amber-200'
-            }`}
-          >
-            <Activity size={12} className={isRunning ? 'animate-pulse' : ''} />
-            <span>{app.status}</span>
+    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-100 dark:border-slate-700">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center space-x-2">
+          <Box size={16} className="text-blue-500" />
+          <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">{svc.name}</h4>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${svc.status === 'RUNNING' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>
+            {svc.status || 'UNKNOWN'}
           </span>
         </div>
-
-        <div className="grid grid-cols-2 gap-4 mt-auto mb-6 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl">
-          <div className="flex flex-col">
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider mb-1">
-              Namespace
-            </span>
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-              {app.namespace}
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider mb-1 flex items-center space-x-1">
-              <Cpu size={12} />
-              <span>Replicas</span>
-            </span>
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {app.replicas} Pods
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2 pt-4 border-t border-slate-100 dark:border-slate-700/50">
-          <button
-            onClick={() => onScale(app)}
-            className="flex-1 flex items-center justify-center space-x-1 py-2 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors"
-          >
-            <ArrowUpCircle size={16} />
-            <span>Scale</span>
+        <div className="flex space-x-1">
+          <button onClick={() => onScale(app, svc.name, svc.replicas)} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-md" title="Scale">
+            <ArrowUpCircle size={14} />
+          </button>
+          <button onClick={() => onRestart(app, svc.name)} className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-md" title="Restart">
+            <RotateCw size={14} />
+          </button>
+          <button onClick={() => onRollback(app, svc.name)} className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-md" title="Rollback">
+            <Undo2 size={14} />
           </button>
         </div>
+      </div>
 
-        <div className="flex flex-wrap gap-2 pt-2">
-          {isStopped ? (
-            <button
-              onClick={() => onStart(app)}
-              className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 transition-colors"
-              title="Start"
-            >
-              <Play size={18} />
-            </button>
-          ) : (
-            <button
-              onClick={() => onStop(app)}
-              className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-              title="Stop"
-            >
-              <Square size={18} />
-            </button>
-          )}
-          <button
-            onClick={() => onRestart(app)}
-            className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-            title="Restart"
-          >
-            <RotateCw size={18} />
-          </button>
-          <button
-            onClick={() => onRollback(app)}
-            className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-            title="Rollback"
-          >
-            <Undo2 size={18} />
-          </button>
-          <button
-            onClick={() => onViewYaml(app)}
-            className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-            title="View YAML"
-          >
-            <FileCode size={18} />
-          </button>
-          <button
-            onClick={() => {
-              if (showPods) {
-                setShowEvents(false);
-              }
-              setShowPods(!showPods);
-            }}
-            className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-            title={showPods ? "Hide Pods" : "Show Pods"}
-          >
-            {showPods ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </button>
-          <button
-            onClick={() => onDelete(app)}
-            className="flex items-center justify-center p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-red-500 hover:bg-red-50 hover:border-red-200 transition-colors ml-auto"
-            title="Delete"
-          >
-            <Trash2 size={18} />
-          </button>
-        </div>
-
-        {showPods && (
-          <div className="mt-4 border-t border-slate-100 dark:border-slate-700/50 pt-4">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pods</h4>
-              <button
-                onClick={fetchPods}
-                className="flex items-center space-x-1 text-xs text-slate-500 hover:text-slate-700"
-                disabled={loadingPods}
-                title="Refresh Pods"
-              >
-                <RotateCw size={14} className={loadingPods ? 'animate-spin' : ''} />
-                <span>刷新</span>
-              </button>
+      <div className="space-y-2 mb-3">
+        {svc.containers.map(c => (
+          <div key={c.name} className="flex items-center justify-between text-xs bg-white dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700">
+            <div className="flex flex-col truncate">
+              <span className="font-semibold text-slate-700 dark:text-slate-300">{c.name}</span>
+              <span className="text-slate-500 font-mono truncate max-w-[150px]">{c.image}</span>
             </div>
-
-            {podsError && (
-              <div className="mb-2 flex items-center justify-between bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-xs">
-                <span className="truncate" title={podsError}>加载 Pods 失败：{podsError}</span>
-                <button onClick={fetchPods} className="ml-3 text-red-700 hover:text-red-900 font-medium" disabled={loadingPods}>
-                  重试
-                </button>
-              </div>
-            )}
-
-            {loadingPods ? (
-              <div className="text-sm text-slate-400">Loading pods...</div>
-            ) : pods.length === 0 ? (
-              <div className="text-sm text-slate-400">No pods found.</div>
-            ) : (
-              <div className="space-y-2">
-                {pods.map(pod => {
-                  const phaseMeta = getPhaseMeta(pod);
-                  const diag = podDiagnosis(pod);
-                  return (
-                    <div key={pod.name} className="flex flex-col bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-mono text-slate-700 dark:text-slate-300 truncate w-32" title={pod.name}>{pod.name}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${phaseMeta.cls}`}>{phaseMeta.phase}</span>
-                      </div>
-                      {diag && (
-                        <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate" title={diag}>
-                          {diag}
-                        </div>
-                      )}
-                      <div className="flex justify-end space-x-1 mt-2">
-                        <button onClick={() => onViewLogs(pod)} className="p-1 text-slate-500 hover:text-blue-500" title="Logs">
-                          <FileText size={14} />
-                        </button>
-                        <button onClick={() => onOpenTerminal(pod)} className="p-1 text-slate-500 hover:text-blue-500" title="Terminal">
-                          <TerminalSquare size={14} />
-                        </button>
-                        <button
-                          onClick={() => onViewEvents(app)}
-                          className="p-1 text-slate-500 hover:text-blue-500"
-                          title="Events"
-                        >
-                          <ListOrdered size={14} />
-                        </button>
-                        <button
-                          onClick={() => onUpdateImage(app)}
-                          className="p-1 text-slate-500 hover:text-blue-500"
-                          title="Update Image"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <button onClick={() => onUpdateImage(app, svc.name, c.name, c.image)} className="p-1 text-slate-500 hover:text-blue-600" title="Update Image">
+              <Edit3 size={14} />
+            </button>
           </div>
-        )}
+        ))}
+      </div>
+
+      <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-slate-500">Pods ({pods.length}/{svc.replicas})</span>
+          <button onClick={fetchPods} disabled={loadingPods} className="text-xs text-slate-500 hover:text-slate-700">
+            <RotateCw size={12} className={loadingPods ? 'animate-spin' : ''} />
+          </button>
+        </div>
+        
+        {podsError && <div className="text-[10px] text-red-500 mb-2">{podsError}</div>}
+        
+        <div className="space-y-1">
+          {pods.map(pod => {
+            const phaseMeta = getPhaseMeta(pod);
+            const diag = podDiagnosis(pod);
+            return (
+              <div key={pod.name} className="flex flex-col bg-white dark:bg-slate-800 p-1.5 rounded border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-slate-700 dark:text-slate-300 truncate w-32" title={pod.name}>{pod.name}</span>
+                  <span className={`text-[9px] px-1 py-0.5 rounded-sm ${phaseMeta.cls}`}>{phaseMeta.phase}</span>
+                </div>
+                {diag && (
+                  <div className="mt-0.5 text-[9px] text-slate-500 truncate" title={diag}>{diag}</div>
+                )}
+                <div className="flex justify-end space-x-1 mt-1">
+                  <button onClick={() => onViewLogs(pod)} className="p-0.5 text-slate-400 hover:text-blue-500" title="Logs">
+                    <FileText size={12} />
+                  </button>
+                  <button onClick={() => onOpenTerminal(pod)} className="p-0.5 text-slate-400 hover:text-blue-500" title="Terminal">
+                    <TerminalSquare size={12} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

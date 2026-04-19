@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { X, RefreshCw, Copy, Check } from 'lucide-react';
-import { ApplicationDeployment, api } from '@/lib/api';
+import { Application, api } from '@/lib/api';
 
 interface Props {
-  app: ApplicationDeployment | null;
+  app: Application | null;
   onClose: () => void;
 }
 

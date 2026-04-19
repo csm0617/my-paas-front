@@ -10,7 +10,7 @@ import YamlModal from '@/components/YamlModal';
 import EventsModal from '@/components/EventsModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import InputDialog from '@/components/InputDialog';
-import { ApplicationDeployment, DeployCommand, Pod } from '@/lib/api';
+import { Application, DeployCommand, Pod } from '@/lib/api';
 import { Plus, RefreshCw, FolderTree, AlertCircle, LayoutGrid, List } from 'lucide-react';
 import { useK8sWatch } from '@/hooks/useK8sWatch';
 
@@ -21,15 +21,19 @@ export default function Dashboard() {
   const [isDeployModalOpen, setDeployModalOpen] = useState(false);
   const [logsPod, setLogsPod] = useState<Pod | null>(null);
   const [terminalPod, setTerminalPod] = useState<Pod | null>(null);
-  const [yamlApp, setYamlApp] = useState<ApplicationDeployment | null>(null);
-  const [eventsApp, setEventsApp] = useState<ApplicationDeployment | null>(null);
+  const [yamlApp, setYamlApp] = useState<Application | null>(null);
+  const [eventsApp, setEventsApp] = useState<Application | null>(null);
   const [inputAction, setInputAction] = useState<{
     type: 'scale' | 'image';
-    app: ApplicationDeployment;
+    app: Application;
+    serviceName: string;
+    containerName?: string;
+    currentValue?: string;
   } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     type: 'delete' | 'stop' | 'restart' | 'rollback';
-    app: ApplicationDeployment;
+    app: Application;
+    serviceName?: string;
   } | null>(null);
 
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
@@ -48,12 +52,12 @@ export default function Dashboard() {
     }
   });
 
-  const handleScale = async (app: ApplicationDeployment) => {
-    setInputAction({ type: 'scale', app });
+  const handleScale = async (app: Application, serviceName: string, currentReplicas: number) => {
+    setInputAction({ type: 'scale', app, serviceName, currentValue: currentReplicas.toString() });
   };
 
-  const handleUpdateImage = async (app: ApplicationDeployment) => {
-    setInputAction({ type: 'image', app });
+  const handleUpdateImage = async (app: Application, serviceName: string, containerName: string, currentImage: string) => {
+    setInputAction({ type: 'image', app, serviceName, containerName, currentValue: currentImage });
   };
 
   const handleInputConfirm = async (value: string) => {
@@ -62,11 +66,11 @@ export default function Dashboard() {
       if (inputAction.type === 'scale') {
         const n = parseInt(value, 10);
         if (!isNaN(n) && n >= 0) {
-          await scale(inputAction.app.name, n);
+          await scale(inputAction.app.name, inputAction.serviceName, n);
         }
-      } else if (inputAction.type === 'image') {
+      } else if (inputAction.type === 'image' && inputAction.containerName) {
         if (value.trim()) {
-          await updateImage(inputAction.app.name, value.trim());
+          await updateImage(inputAction.app.name, inputAction.serviceName, inputAction.containerName, value.trim());
         }
       }
     } catch (err: any) {
@@ -76,7 +80,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleDelete = async (app: ApplicationDeployment) => {
+  const handleDelete = async (app: Application) => {
     setConfirmAction({ type: 'delete', app });
   };
 
@@ -84,30 +88,30 @@ export default function Dashboard() {
     await deploy(command);
   };
 
-  const handleStart = async (app: ApplicationDeployment) => {
+  const handleStart = async (app: Application) => {
     await start(app.name);
   };
 
-  const handleStop = async (app: ApplicationDeployment) => {
+  const handleStop = async (app: Application) => {
     setConfirmAction({ type: 'stop', app });
   };
 
-  const handleRestart = async (app: ApplicationDeployment) => {
-    setConfirmAction({ type: 'restart', app });
+  const handleRestart = async (app: Application, serviceName: string) => {
+    setConfirmAction({ type: 'restart', app, serviceName });
   };
 
-  const handleRollback = async (app: ApplicationDeployment) => {
-    setConfirmAction({ type: 'rollback', app });
+  const handleRollback = async (app: Application, serviceName: string) => {
+    setConfirmAction({ type: 'rollback', app, serviceName });
   };
 
   const executeConfirmAction = async () => {
     if (!confirmAction) return;
-    const { type, app } = confirmAction;
+    const { type, app, serviceName } = confirmAction;
     try {
       if (type === 'delete') await deleteDeployment(app.name);
       if (type === 'stop') await stop(app.name);
-      if (type === 'restart') await restart(app.name);
-      if (type === 'rollback') await rollback(app.name);
+      if (type === 'restart' && serviceName) await restart(app.name, serviceName);
+      if (type === 'rollback' && serviceName) await rollback(app.name, serviceName);
     } catch (err: any) {
       alert(err.message || `Failed to ${type} application`);
     }
@@ -214,7 +218,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 content-start pb-8">
           {deployments.map((app) => (
             <ApplicationCard
-              key={app.id}
+              key={app.name}
               app={app}
               onScale={handleScale}
               onUpdateImage={handleUpdateImage}
@@ -234,7 +238,7 @@ export default function Dashboard() {
         <div className="flex flex-col gap-4 content-start pb-8">
           {deployments.map((app) => (
             <ApplicationListItem
-              key={app.id}
+              key={app.name}
               app={app}
               onScale={handleScale}
               onUpdateImage={handleUpdateImage}
@@ -288,7 +292,7 @@ export default function Dashboard() {
         isOpen={!!inputAction}
         title={inputAction?.type === 'scale' ? 'Scale Application' : 'Update Image'}
         message={inputAction?.type === 'scale' ? 'Enter new replicas:' : 'Enter new image:'}
-        defaultValue={inputAction?.type === 'scale' ? inputAction.app.replicas.toString() : (inputAction?.app.image || '')}
+        defaultValue={inputAction?.currentValue || ''}
         inputType={inputAction?.type === 'scale' ? 'number' : 'text'}
         onConfirm={handleInputConfirm}
         onCancel={() => setInputAction(null)}
