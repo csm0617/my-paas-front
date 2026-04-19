@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { useNamespaceStore } from '@/store/namespaceStore';
 import ApplicationCard from '@/components/ApplicationCard';
+import ApplicationListItem from '@/components/ApplicationListItem';
 import DeployModal from '@/components/DeployModal';
 import LogsDrawer from '@/components/LogsDrawer';
 import TerminalDrawer from '@/components/TerminalDrawer';
@@ -9,7 +10,7 @@ import YamlModal from '@/components/YamlModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import InputDialog from '@/components/InputDialog';
 import { ApplicationDeployment, DeployCommand, Pod } from '@/lib/api';
-import { Plus, RefreshCw, FolderTree, AlertCircle } from 'lucide-react';
+import { Plus, RefreshCw, FolderTree, AlertCircle, LayoutGrid, List } from 'lucide-react';
 import { useK8sWatch } from '@/hooks/useK8sWatch';
 
 export default function Dashboard() {
@@ -28,6 +29,8 @@ export default function Dashboard() {
     type: 'delete' | 'stop' | 'restart' | 'rollback';
     app: ApplicationDeployment;
   } | null>(null);
+
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
 
   useEffect(() => {
     fetchNamespaces();
@@ -142,6 +145,23 @@ export default function Dashboard() {
           >
             <RefreshCw size={20} className={loading ? 'animate-spin text-blue-500' : ''} />
           </button>
+          
+          <div className="hidden sm:flex items-center bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'card' ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+              title="Card View"
+            >
+              <LayoutGrid size={18} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+              title="List View"
+            >
+              <List size={18} />
+            </button>
+          </div>
         </div>
 
         <button
@@ -188,10 +208,29 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-      ) : (
+      ) : viewMode === 'card' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 content-start pb-8">
           {deployments.map((app) => (
             <ApplicationCard
+              key={app.id}
+              app={app}
+              onScale={handleScale}
+              onUpdateImage={handleUpdateImage}
+              onDelete={handleDelete}
+              onViewLogs={setLogsPod}
+              onOpenTerminal={setTerminalPod}
+              onStart={handleStart}
+              onStop={handleStop}
+              onRestart={handleRestart}
+              onRollback={handleRollback}
+              onViewYaml={setYamlApp}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4 content-start pb-8">
+          {deployments.map((app) => (
+            <ApplicationListItem
               key={app.id}
               app={app}
               onScale={handleScale}
