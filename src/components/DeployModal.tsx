@@ -633,6 +633,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                     setConfigMounts={setConfigMountList}
                     secretMounts={secretMountList}
                     setSecretMounts={setSecretMountList}
+                    currentNamespace={formData.namespace}
                   />
                 </div>
 

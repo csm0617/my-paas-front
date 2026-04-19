@@ -8,10 +8,10 @@ interface Props {
   setConfigMounts: React.Dispatch<React.SetStateAction<ConfigMount[]>>;
   secretMounts: SecretMount[];
   setSecretMounts: React.Dispatch<React.SetStateAction<SecretMount[]>>;
+  currentNamespace: string;
 }
 
-export default function ConfigMountSection({ configMounts, setConfigMounts, secretMounts, setSecretMounts }: Props) {
-  const { currentNamespace } = useNamespaceStore();
+export default function ConfigMountSection({ configMounts, setConfigMounts, secretMounts, setSecretMounts, currentNamespace }: Props) {
   const [availableConfigMaps, setAvailableConfigMaps] = useState<K8sConfigMap[]>([]);
   const [availableSecrets, setAvailableSecrets] = useState<K8sSecret[]>([]);
 
