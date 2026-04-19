@@ -258,7 +258,7 @@ export default function SchedulingSection({
                   <option value="In">In</option><option value="NotIn">NotIn</option><option value="Exists">Exists</option><option value="DoesNotExist">DoesNotExist</option><option value="Gt">Gt</option><option value="Lt">Lt</option>
                 </select>
                 {r.operator !== 'Exists' && r.operator !== 'DoesNotExist' && (
-                  <input type="text" placeholder="Values (comma separated)" className="flex-1 min-w-[150px] px-2 py-1 border rounded text-xs" value={r.values} onChange={(e) => { const next = { ...affinity }; next.required[idx].values = e.target.value; setAffinity(next); }} />
+                  <input type="text" list={r.key && getValuesForKey(r.key).length > 0 ? `node-label-values-${r.key.replace(/[^a-zA-Z0-9]/g, '-')}` : undefined} placeholder="Values (comma separated)" className="flex-1 min-w-[150px] px-2 py-1 border rounded text-xs" value={r.values} onChange={(e) => { const next = { ...affinity }; next.required[idx].values = e.target.value; setAffinity(next); }} />
                 )}
                 <button type="button" onClick={() => { const next = { ...affinity }; next.required.splice(idx, 1); setAffinity(next); }} className="p-1 text-red-500 hover:bg-red-50 rounded ml-auto"><X size={14} /></button>
               </div>
@@ -281,7 +281,7 @@ export default function SchedulingSection({
                   <option value="In">In</option><option value="NotIn">NotIn</option><option value="Exists">Exists</option><option value="DoesNotExist">DoesNotExist</option><option value="Gt">Gt</option><option value="Lt">Lt</option>
                 </select>
                 {p.requirement.operator !== 'Exists' && p.requirement.operator !== 'DoesNotExist' && (
-                  <input type="text" placeholder="Values (comma separated)" className="flex-1 min-w-[150px] px-2 py-1 border rounded text-xs" value={p.requirement.values} onChange={(e) => { const next = { ...affinity }; next.preferred[idx].requirement.values = e.target.value; setAffinity(next); }} />
+                  <input type="text" list={p.requirement.key && getValuesForKey(p.requirement.key).length > 0 ? `node-label-values-${p.requirement.key.replace(/[^a-zA-Z0-9]/g, '-')}` : undefined} placeholder="Values (comma separated)" className="flex-1 min-w-[150px] px-2 py-1 border rounded text-xs" value={p.requirement.values} onChange={(e) => { const next = { ...affinity }; next.preferred[idx].requirement.values = e.target.value; setAffinity(next); }} />
                 )}
                 <button type="button" onClick={() => { const next = { ...affinity }; next.preferred.splice(idx, 1); setAffinity(next); }} className="p-1 text-red-500 hover:bg-red-50 rounded ml-auto"><X size={14} /></button>
               </div>
