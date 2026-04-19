@@ -169,7 +169,7 @@ export default function Dashboard() {
           className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 font-medium"
         >
           <Plus size={18} />
-          <span>New Deployment</span>
+          <span>New Application</span>
         </button>
       </div>
 
@@ -196,8 +196,8 @@ export default function Dashboard() {
             </div>
             <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">No applications found</h3>
             <p className="text-slate-500 dark:text-slate-400 text-sm">
-              There are no deployments in the <span className="font-mono text-blue-500">{namespace}</span> namespace.
-              Click "New Deployment" to create one.
+              There are no applications in the <span className="font-mono text-blue-500">{namespace}</span> namespace.
+              Click "New Application" to create one.
             </p>
             <button
               onClick={() => setDeployModalOpen(true)}
