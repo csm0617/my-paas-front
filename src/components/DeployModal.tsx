@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { DeployCommand, ApplicationService, ContainerSpec, ConfigMount, SecretMount, PortSpec, api } from '@/lib/api';
 import { X, Plus, Trash2, AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Save } from 'lucide-react';
 import ConfigMountSection from '@/components/ConfigMountSection';
+import SchedulingSection from '@/components/SchedulingSection';
 import { useNamespaceStore } from '@/store/namespaceStore';
 import { useAppStore } from '@/store/appStore';
 
@@ -841,12 +842,15 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
                             
                             {/* Scheduling */}
                             <div>
-                               <label className="block text-xs font-medium text-slate-500 mb-1">Scheduling (nodeSelector, affinity, tolerations)</label>
-                               <div className="space-y-2">
-                                  {renderKeyValueList(svc.nodeSelectorRows, (l) => updateService(sIdx, s => ({ ...s, nodeSelectorRows: l })), 'Label KEY', 'VALUE')}
-                                  <textarea placeholder='affinityJson e.g. {"nodeAffinity": {...}}' className="w-full px-2 py-1 border rounded text-xs font-mono" rows={2} value={svc.affinityJson} onChange={(e) => updateService(sIdx, s => ({ ...s, affinityJson: e.target.value }))} />
-                                  <textarea placeholder='tolerationsJson e.g. [{"key":"dedicated","operator":"Equal","value":"gpu","effect":"NoSchedule"}]' className="w-full px-2 py-1 border rounded text-xs font-mono" rows={2} value={svc.tolerationsJson} onChange={(e) => updateService(sIdx, s => ({ ...s, tolerationsJson: e.target.value }))} />
-                               </div>
+                               <label className="block text-xs font-medium text-slate-500 mb-2">Scheduling</label>
+                               <SchedulingSection
+                                 nodeSelectorRows={svc.nodeSelectorRows}
+                                 onNodeSelectorChange={(rows) => updateService(sIdx, s => ({ ...s, nodeSelectorRows: rows }))}
+                                 affinityJson={svc.affinityJson}
+                                 onAffinityChange={(json) => updateService(sIdx, s => ({ ...s, affinityJson: json }))}
+                                 tolerationsJson={svc.tolerationsJson}
+                                 onTolerationsChange={(json) => updateService(sIdx, s => ({ ...s, tolerationsJson: json }))}
+                               />
                             </div>
 
                           </div>
