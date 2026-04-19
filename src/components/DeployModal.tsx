@@ -769,12 +769,40 @@ export default function DeployModal({ isOpen, onClose, onDeploy }: Props) {
 
                                           {/* Resources */}
                                           <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">Resources</label>
+                                            <div className="flex items-center justify-between mb-2">
+                                              <label className="text-xs font-medium text-slate-500">Resources (CPU / Memory)</label>
+                                              <div className="flex items-center space-x-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: '250m', limitsCpu: '500m', requestsMemory: '256Mi', limitsMemory: '512Mi' }))}
+                                                  className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded transition-colors"
+                                                  title="Small: 0.25-0.5 CPU, 256-512MB Mem"
+                                                >
+                                                  Small
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: '500m', limitsCpu: '1000m', requestsMemory: '512Mi', limitsMemory: '1Gi' }))}
+                                                  className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded transition-colors"
+                                                  title="Medium: 0.5-1 CPU, 0.5-1GB Mem"
+                                                >
+                                                  Medium
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: '1000m', limitsCpu: '2000m', requestsMemory: '1Gi', limitsMemory: '2Gi' }))}
+                                                  className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded transition-colors"
+                                                  title="Large: 1-2 CPU, 1-2GB Mem"
+                                                >
+                                                  Large
+                                                </button>
+                                              </div>
+                                            </div>
                                             <div className="grid grid-cols-4 gap-2">
-                                              <input type="text" placeholder="Req CPU (e.g. 100m)" className="px-2 py-1 border rounded text-xs" value={cnt.requestsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: e.target.value }))} />
-                                              <input type="text" placeholder="Req Mem (e.g. 128Mi)" className="px-2 py-1 border rounded text-xs" value={cnt.requestsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsMemory: e.target.value }))} />
-                                              <input type="text" placeholder="Lim CPU (e.g. 500m)" className="px-2 py-1 border rounded text-xs" value={cnt.limitsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsCpu: e.target.value }))} />
-                                              <input type="text" placeholder="Lim Mem (e.g. 256Mi)" className="px-2 py-1 border rounded text-xs" value={cnt.limitsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsMemory: e.target.value }))} />
+                                              <input type="text" placeholder="Req CPU (e.g. 100m)" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.requestsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsCpu: e.target.value }))} />
+                                              <input type="text" placeholder="Req Mem (e.g. 128Mi)" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.requestsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, requestsMemory: e.target.value }))} />
+                                              <input type="text" placeholder="Lim CPU (e.g. 500m)" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.limitsCpu} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsCpu: e.target.value }))} />
+                                              <input type="text" placeholder="Lim Mem (e.g. 256Mi)" className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500" value={cnt.limitsMemory} onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, limitsMemory: e.target.value }))} />
                                             </div>
                                           </div>
 
