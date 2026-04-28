@@ -90,7 +90,7 @@ export default function ApplicationListItem({
             <span>Services</span>
           </span>
           <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-            {app.services.length} ({totalReplicas} Pods)
+            {app.services.length}
           </span>
         </div>
 

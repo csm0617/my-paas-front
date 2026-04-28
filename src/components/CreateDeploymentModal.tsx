@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { CreateDeploymentRequest } from '@/lib/api';
 import ResourcesSchedulingSection from '@/components/ResourcesSchedulingSection';
@@ -29,6 +29,10 @@ export default function CreateDeploymentModal({ isOpen, onClose, onSubmit }: Cre
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const namespaceOptions = useMemo(() => {
+    return namespaces.length > 0 ? namespaces.map((ns) => ns.name) : ['default', 'kube-system', 'monitoring'];
+  }, [namespaces]);
+
   useEffect(() => {
     if (isOpen) {
       setName('');
@@ -52,10 +56,13 @@ export default function CreateDeploymentModal({ isOpen, onClose, onSubmit }: Cre
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!namespace) return;
+    if (!namespaceOptions.includes(namespace)) setNamespace('');
+  }, [isOpen, namespace, namespaceOptions]);
 
-  const namespaceOptions = namespaces.length > 0 ? namespaces.map((ns) => ns.name) : ['default', 'kube-system', 'monitoring'];
-  const namespaceInOptions = namespaceOptions.includes(namespace);
+  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,37 +149,18 @@ export default function CreateDeploymentModal({ isOpen, onClose, onSubmit }: Cre
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Namespace <span className="text-red-500">*</span>
               </label>
-              <div className="space-y-2">
-                <select
-                  value={namespaceInOptions ? namespace : '__custom__'}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === '__custom__') {
-                      setNamespace('');
-                      return;
-                    }
-                    setNamespace(v);
-                  }}
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {namespaceOptions.map((ns) => (
-                    <option key={ns} value={ns}>
-                      {ns}
-                    </option>
-                  ))}
-                  <option value="__custom__">Custom…</option>
-                </select>
-                {!namespaceInOptions && (
-                  <input
-                    type="text"
-                    value={namespace}
-                    onChange={(e) => setNamespace(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. my-namespace"
-                    required
-                  />
-                )}
-              </div>
+              <select
+                value={namespace || ''}
+                onChange={(e) => setNamespace(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="" disabled>Select a namespace</option>
+                {namespaceOptions.map((ns) => (
+                  <option key={ns} value={ns}>
+                    {ns}
+                  </option>
+                ))}
+              </select>
             </div>
             
             <div>

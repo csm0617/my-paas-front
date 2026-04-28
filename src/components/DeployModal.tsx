@@ -3,6 +3,7 @@ import { DeployCommand, ApplicationService, ContainerSpec, ConfigMount, SecretMo
 import { X, Plus, Trash2, AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Copy, Save, Network } from 'lucide-react';
 import ConfigMountSection from '@/components/ConfigMountSection';
 import SchedulingSection from '@/components/SchedulingSection';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { useNamespaceStore } from '@/store/namespaceStore';
 import { useAppStore } from '@/store/appStore';
 
@@ -25,6 +26,8 @@ interface ContainerState {
   id: string;
   name: string;
   image: string;
+  imagePullPolicy: string;
+  imagePullSecrets: string;
   ports: PortSpecState[];
   envList: { key: string; value: string }[];
   configList: { key: string; value: string }[];
@@ -72,6 +75,8 @@ const initialContainer = (): ContainerState => ({
   id: generateId(),
   name: 'main',
   image: '',
+  imagePullPolicy: 'Always',
+  imagePullSecrets: '',
   ports: [{ port: 80, protocol: 'TCP' }],
   envList: [],
   configList: [],
@@ -112,6 +117,10 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const namespaceOptions = useMemo(() => {
+    return namespaces.length > 0 ? namespaces.map((ns) => ns.name) : ['default', 'kube-system', 'monitoring'];
+  }, [namespaces]);
+
   const [formState, setFormState] = useState<FormState>({
     name: '',
     namespace: currentNamespace || 'default',
@@ -125,6 +134,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
   
   const [nodeList, setNodeList] = useState<K8sNode[]>([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{ sIdx: number; cIdx: number } | null>(null);
 
   const fromMap = (obj?: Record<string, string>) => {
     if (!obj) return [];
@@ -151,6 +161,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
               id: generateId(),
               name: c.name,
               image: c.image,
+              imagePullPolicy: c.imagePullPolicy || 'Always',
+              imagePullSecrets: c.imagePullSecrets?.join(', ') || '',
               ports: c.ports?.map(p => ({
                 port: p.port,
                 protocol: (p.protocol as 'TCP' | 'UDP') || 'TCP',
@@ -208,6 +220,15 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
       setLoadingNodes(false);
     });
   }, [isOpen, initialApp, initialServiceName]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialApp) return;
+    if (!formState.namespace) return;
+    if (!namespaceOptions.includes(formState.namespace)) {
+      setFormState((prev) => ({ ...prev, namespace: '' }));
+    }
+  }, [isOpen, initialApp, formState.namespace, namespaceOptions]);
 
   const toggleService = (id: string) => {
     setExpandedServices(prev => {
@@ -331,6 +352,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
             return {
               name: c.name,
               image: c.image,
+              imagePullPolicy: c.imagePullPolicy,
+              imagePullSecrets: c.imagePullSecrets ? c.imagePullSecrets.split(',').map(s => s.trim()).filter(Boolean) : [],
               port: mainPort,
               ports: c.ports.map(p => ({
                 port: p.port,
@@ -370,9 +393,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
   const commandPreview = useMemo(() => buildCommand(), [formState]);
 
   if (!isOpen) return null;
-
-  const namespaceOptions = namespaces.length > 0 ? namespaces.map((ns) => ns.name) : ['default', 'kube-system', 'monitoring'];
-  const namespaceInOptions = namespaceOptions.includes(formState.namespace);
 
   const validateJson = (text: string | undefined) => {
     const trimmed = (text ?? '').trim();
@@ -546,11 +566,12 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
         <div className="flex-1 overflow-y-auto p-6">
           <form id="deploy-form" onSubmit={handleSubmit} className="space-y-6">
             <div className="flex items-center gap-2 max-w-2xl mx-auto mb-8">
-              {steps.map((label, i) => {
-                if (initialApp && i === 0) return null; // 隐藏步骤 1：App Info
-                const displayIndex = initialApp ? i : i + 1;
-                return (
-                  <div key={label} className="flex items-center flex-1 min-w-0">
+          {steps.map((label, i) => {
+            if (initialApp && i === 0) return null; // 隐藏步骤 1：App Info
+            const displayIndex = initialApp ? i : i + 1;
+            const displayLabel = label === 'Services & Containers' ? 'Services & Workloads' : label;
+            return (
+              <div key={label} className="flex items-center flex-1 min-w-0">
                     <div className="flex flex-col items-center min-w-0 w-full">
                       <div
                         className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
@@ -563,10 +584,10 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                         className={`mt-2 text-xs font-medium text-center truncate w-full ${
                           i === step ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'
                         }`}
-                        title={label}
-                      >
-                        {label}
-                      </div>
+                        title={displayLabel}
+                    >
+                      {displayLabel}
+                    </div>
                     </div>
                     {i < steps.length - 1 && (
                       <div className={`flex-1 h-0.5 mx-2 ${i < step ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'}`} />
@@ -601,31 +622,17 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                     <div className="space-y-2">
                       <select
                         disabled={!!initialApp}
-                        value={namespaceInOptions ? formState.namespace : '__custom__'}
+                        value={formState.namespace || ''}
                         onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === '__custom__') {
-                            setFormState({ ...formState, namespace: '' });
-                            return;
-                          }
-                          setFormState({ ...formState, namespace: v });
+                          setFormState({ ...formState, namespace: e.target.value });
                         }}
                         className={`w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg outline-none ${initialApp ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
                       >
+                        <option value="" disabled>Select a namespace</option>
                         {namespaceOptions.map((ns) => (
                           <option key={ns} value={ns}>{ns}</option>
                         ))}
-                        <option value="__custom__">Custom…</option>
                       </select>
-                      {!namespaceInOptions && (
-                        <input
-                          type="text"
-                          placeholder="e.g. my-namespace"
-                          className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                          value={formState.namespace}
-                          onChange={(e) => setFormState({ ...formState, namespace: e.target.value })}
-                        />
-                      )}
                     </div>
                   </div>
                 </div>
@@ -702,14 +709,14 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                             {/* Containers List */}
                             <div>
                               <div className="flex justify-between items-center mb-3">
-                                <h4 className="text-sm font-medium text-slate-800 dark:text-slate-200">Containers</h4>
+                                <h4 className="text-sm font-medium text-slate-800 dark:text-slate-200">Workloads</h4>
                                 <button
                                   type="button"
                                   onClick={() => updateService(sIdx, s => ({ ...s, containers: [...s.containers, initialContainer()] }))}
                                   className="text-xs flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
                                   disabled={!!initialApp}
                                 >
-                                  <Plus size={14} /> <span>Add Container</span>
+                                  <Plus size={14} /> <span>Add Workload</span>
                                 </button>
                               </div>
                               <div className="space-y-3">
@@ -741,7 +748,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                       
                                       {isCntExpanded && (
                                         <div className="p-3 border-t border-slate-200 dark:border-slate-700 space-y-4">
-                                          <div className="grid grid-cols-2 gap-4">
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
                                               <label className="block text-xs font-medium text-slate-500 mb-1">Name</label>
                                               <input
@@ -760,6 +767,28 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                                 className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
                                                 value={cnt.image}
                                                 onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, image: e.target.value }))}
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-slate-500 mb-1">Image Pull Policy</label>
+                                              <select
+                                                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                value={cnt.imagePullPolicy}
+                                                onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, imagePullPolicy: e.target.value }))}
+                                              >
+                                                <option value="Always">Always</option>
+                                                <option value="IfNotPresent">IfNotPresent</option>
+                                                <option value="Never">Never</option>
+                                              </select>
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-slate-500 mb-1">Image Pull Secrets</label>
+                                              <input
+                                                type="text"
+                                                placeholder="Comma separated secrets"
+                                                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
+                                                value={cnt.imagePullSecrets}
+                                                onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, imagePullSecrets: e.target.value }))}
                                               />
                                             </div>
                                           </div>
@@ -1000,8 +1029,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                                   type="button"
                                                   onClick={() => {
                                                     if (cnt.schedulingMode === 'advanced') {
-                                                       if (!confirm('Switching to Simple mode will clear your advanced scheduling rules. Continue?')) return;
-                                                       updateContainer(sIdx, cIdx, c => ({ ...c, schedulingMode: 'simple', nodeSelectorRows: [], affinityJson: '', tolerationsJson: '' }));
+                                                      setConfirmAction({ sIdx, cIdx });
                                                     }
                                                   }}
                                                   className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${cnt.schedulingMode === 'simple' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
@@ -1201,6 +1229,20 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={!!confirmAction}
+        title="Switch to Simple Mode"
+        message="Switching to Simple mode will clear your advanced scheduling rules. Continue?"
+        onConfirm={() => {
+          if (confirmAction) {
+            updateContainer(confirmAction.sIdx, confirmAction.cIdx, c => ({ ...c, schedulingMode: 'simple', nodeSelectorRows: [], affinityJson: '', tolerationsJson: '' }));
+          }
+          setConfirmAction(null);
+        }}
+        onCancel={() => setConfirmAction(null)}
+        confirmText="Continue"
+        isDestructive={true}
+      />
     </div>
   );
 }

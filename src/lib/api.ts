@@ -78,6 +78,8 @@ export interface SecretMount {
 export interface ContainerSpec {
   name: string;
   image: string;
+  imagePullPolicy?: string;
+  imagePullSecrets?: string[];
   port?: number;
   ports?: PortSpec[];
   env?: EnvVar;
