@@ -6,6 +6,7 @@ import SchedulingSection from '@/components/SchedulingSection';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useNamespaceStore } from '@/store/namespaceStore';
 import { useAppStore } from '@/store/appStore';
+import { buildIstioYaml, IstioDraft } from '@/lib/istioYaml';
 
 interface Props {
   isOpen: boolean;
@@ -60,6 +61,11 @@ interface ServiceState {
   id: string;
   name: string;
   containers: ContainerState[];
+  enableService: boolean;
+  serviceType: 'ClusterIP' | 'NodePort';
+  enableIngress: boolean;
+  ingressDomain: string;
+  ingressTargetWorkloadId?: string;
 }
 
 interface FormState {
@@ -107,6 +113,11 @@ const initialService = (): ServiceState => ({
   id: generateId(),
   name: 'web',
   containers: [initialContainer()],
+  enableService: true,
+  serviceType: 'ClusterIP',
+  enableIngress: false,
+  ingressDomain: '',
+  ingressTargetWorkloadId: undefined,
 });
 
 export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, initialServiceName }: Props) {
@@ -130,7 +141,19 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
 
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
+  const [expandedSvcSections, setExpandedSvcSections] = useState<Record<string, Set<'networking' | 'workloads' | 'istio'>>>({});
   const [nodePortStatus, setNodePortStatus] = useState<Record<number, { checking: boolean, available: boolean | null }>>({});
+  const [istioDraft, setIstioDraft] = useState<IstioDraft>({
+    entry: {
+      enabled: false,
+      host: '',
+      gatewayRef: { namespace: 'istio-system', name: 'istio-ingressgateway' },
+      target: null,
+    },
+    services: {},
+  });
+  const [istioEntryExpanded, setIstioEntryExpanded] = useState(true);
+  const [istioPreviewExpanded, setIstioPreviewExpanded] = useState(true);
   
   const [nodeList, setNodeList] = useState<K8sNode[]>([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
@@ -146,10 +169,66 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
     setStep(initialApp ? 1 : 0);
     setError(null);
     setNodePortStatus({});
+    setExpandedServices(new Set());
+    setExpandedContainers(new Set());
+    setExpandedSvcSections({});
+    setIstioDraft({
+      entry: {
+        enabled: false,
+        host: '',
+        gatewayRef: { namespace: 'istio-system', name: 'istio-ingressgateway' },
+        target: null,
+      },
+      services: {},
+    });
+    setIstioEntryExpanded(true);
+    setIstioPreviewExpanded(true);
 
     if (initialApp && initialServiceName) {
       const svc = initialApp.services.find(s => s.name === initialServiceName);
       if (svc) {
+        const containers: ContainerState[] = svc.containers.map(c => ({
+          id: generateId(),
+          name: c.name,
+          image: c.image,
+          imagePullPolicy: c.imagePullPolicy || 'Always',
+          imagePullSecrets: c.imagePullSecrets?.join(', ') || '',
+          ports: c.ports?.map(p => ({
+            port: p.port,
+            protocol: (p.protocol as 'TCP' | 'UDP') || 'TCP',
+            enableNodePort: p.enableNodePort,
+            nodePort: p.nodePort
+          })) || [{ port: c.port || 80, protocol: 'TCP' }],
+          envList: fromMap(c.env),
+          configList: fromMap(c.configs),
+          secretList: fromMap(c.secrets),
+          configMounts: c.configMounts || [],
+          secretMounts: c.secretMounts || [],
+          requestsCpu: c.requestsCpu || '',
+          requestsMemory: c.requestsMemory || '',
+          limitsCpu: c.limitsCpu || '',
+          limitsMemory: c.limitsMemory || '',
+          replicas: c.replicas ?? svc.replicas,
+          maxReplicas: c.maxReplicas ?? c.replicas ?? svc.maxReplicas ?? svc.replicas,
+          targetCpuUtilization: c.targetCpuUtilization ?? svc.targetCpuUtilization,
+          targetMemoryUtilization: c.targetMemoryUtilization ?? svc.targetMemoryUtilization,
+          enableService: c.enableService ?? svc.enableService ?? false,
+          serviceType: c.serviceType ?? svc.serviceType ?? 'ClusterIP',
+          enableIngress: c.enableIngress ?? svc.enableIngress ?? false,
+          ingressDomain: c.ingressDomain ?? svc.ingressDomain ?? '',
+          schedulingMode: 'advanced' as const,
+          simpleStrategy: 'any' as const,
+          fixedNodeName: '',
+          nodeSelectorRows: fromMap(c.nodeSelector ?? svc.nodeSelector),
+          affinityJson: c.affinityJson ?? svc.affinityJson ?? '',
+          tolerationsJson: c.tolerationsJson ?? svc.tolerationsJson ?? '',
+        }));
+
+        const enableService = Boolean(svc.enableService ?? containers[0]?.enableService ?? true);
+        const enableIngress = Boolean(svc.enableIngress ?? containers[0]?.enableIngress ?? false);
+        const serviceType = (svc.serviceType ?? containers[0]?.serviceType ?? 'ClusterIP') as 'ClusterIP' | 'NodePort';
+        const ingressDomain = String(svc.ingressDomain ?? containers[0]?.ingressDomain ?? '');
+
         setFormState({
           name: initialApp.name,
           namespace: initialApp.namespace,
@@ -157,42 +236,12 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
           services: [{
             id: generateId(),
             name: svc.name,
-            containers: svc.containers.map(c => ({
-              id: generateId(),
-              name: c.name,
-              image: c.image,
-              imagePullPolicy: c.imagePullPolicy || 'Always',
-              imagePullSecrets: c.imagePullSecrets?.join(', ') || '',
-              ports: c.ports?.map(p => ({
-                port: p.port,
-                protocol: (p.protocol as 'TCP' | 'UDP') || 'TCP',
-                enableNodePort: p.enableNodePort,
-                nodePort: p.nodePort
-              })) || [{ port: c.port || 80, protocol: 'TCP' }],
-              envList: fromMap(c.env),
-              configList: fromMap(c.configs),
-              secretList: fromMap(c.secrets),
-              configMounts: c.configMounts || [],
-              secretMounts: c.secretMounts || [],
-              requestsCpu: c.requestsCpu || '',
-              requestsMemory: c.requestsMemory || '',
-              limitsCpu: c.limitsCpu || '',
-              limitsMemory: c.limitsMemory || '',
-              replicas: c.replicas ?? svc.replicas,
-              maxReplicas: c.maxReplicas ?? c.replicas ?? svc.maxReplicas ?? svc.replicas,
-              targetCpuUtilization: c.targetCpuUtilization ?? svc.targetCpuUtilization,
-              targetMemoryUtilization: c.targetMemoryUtilization ?? svc.targetMemoryUtilization,
-              enableService: c.enableService ?? svc.enableService ?? false,
-              serviceType: c.serviceType ?? svc.serviceType ?? 'ClusterIP',
-              enableIngress: c.enableIngress ?? svc.enableIngress ?? false,
-              ingressDomain: c.ingressDomain ?? svc.ingressDomain ?? '',
-              schedulingMode: 'advanced',
-              simpleStrategy: 'any',
-              fixedNodeName: '',
-              nodeSelectorRows: fromMap(c.nodeSelector ?? svc.nodeSelector),
-              affinityJson: c.affinityJson ?? svc.affinityJson ?? '',
-              tolerationsJson: c.tolerationsJson ?? svc.tolerationsJson ?? '',
-            }))
+            containers,
+            enableService,
+            serviceType,
+            enableIngress,
+            ingressDomain,
+            ingressTargetWorkloadId: containers[0]?.id,
           }]
         });
       }
@@ -248,6 +297,15 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
     });
   };
 
+  const toggleServiceSection = (serviceId: string, section: 'networking' | 'workloads' | 'istio') => {
+    setExpandedSvcSections((prev) => {
+      const current = prev[serviceId] ? new Set(prev[serviceId]) : new Set<'networking' | 'workloads' | 'istio'>(['workloads']);
+      if (current.has(section)) current.delete(section);
+      else current.add(section);
+      return { ...prev, [serviceId]: current };
+    });
+  };
+
   const updateService = (sIdx: number, updater: (s: ServiceState) => ServiceState) => {
     setFormState(prev => {
       const next = [...prev.services];
@@ -289,16 +347,18 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
       namespace: formState.namespace,
       description: formState.description,
       services: formState.services.map(s => {
+        const ingressTargetId = s.ingressTargetWorkloadId ?? s.containers[0]?.id;
+        const normalizedIngressDomain = (s.ingressDomain ?? '').trim();
         return {
           name: s.name,
           replicas: s.containers[0]?.replicas ?? 1, // Fallback for old mode if needed
           maxReplicas: s.containers[0]?.maxReplicas ?? 1,
           targetCpuUtilization: s.containers[0]?.targetCpuUtilization,
           targetMemoryUtilization: s.containers[0]?.targetMemoryUtilization,
-          enableService: s.containers[0]?.enableService ?? true,
-          serviceType: s.containers[0]?.serviceType ?? 'ClusterIP',
-          enableIngress: s.containers[0]?.enableIngress ?? false,
-          ingressDomain: s.containers[0]?.ingressDomain ?? '',
+          enableService: s.enableService,
+          serviceType: s.serviceType,
+          enableIngress: s.enableIngress,
+          ingressDomain: normalizedIngressDomain,
           nodeSelector: toMap(s.containers[0]?.nodeSelectorRows ?? []),
           affinityJson: s.containers[0]?.affinityJson ?? '',
           tolerationsJson: s.containers[0]?.tolerationsJson ?? '',
@@ -376,10 +436,10 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
               maxReplicas: c.maxReplicas,
               targetCpuUtilization: c.targetCpuUtilization,
               targetMemoryUtilization: c.targetMemoryUtilization,
-              enableService: c.enableService,
-              serviceType: c.serviceType,
-              enableIngress: c.enableIngress,
-              ingressDomain: c.ingressDomain,
+              enableService: s.enableService,
+              serviceType: s.serviceType,
+              enableIngress: Boolean(s.enableIngress) && Boolean(ingressTargetId) && c.id === ingressTargetId,
+              ingressDomain: Boolean(s.enableIngress) && Boolean(ingressTargetId) && c.id === ingressTargetId ? normalizedIngressDomain : '',
               nodeSelector: toMap(finalNodeSelectorRows),
               affinityJson: finalAffinityJson,
               tolerationsJson: finalTolerationsJson,
@@ -391,6 +451,9 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
   };
 
   const commandPreview = useMemo(() => buildCommand(), [formState]);
+  const istioYamlPreview = useMemo(() => {
+    return buildIstioYaml(commandPreview.namespace, commandPreview.name, istioDraft);
+  }, [commandPreview.namespace, commandPreview.name, istioDraft]);
 
   if (!isOpen) return null;
 
@@ -418,6 +481,11 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
       for (const s of formState.services) {
         if (!s.name?.trim()) return 'Service 名称不能为空';
         if (s.containers.length === 0) return `Service ${s.name} 至少需要一个 Container`;
+        if (!s.enableService && s.enableIngress) return `Service ${s.name} 关闭 Service 时不能单独启用 Ingress`;
+        if (s.enableIngress) {
+          if (!s.ingressDomain?.trim()) return `Service ${s.name} 启用 Ingress 时必须填写域名`;
+          if (!s.ingressTargetWorkloadId) return `Service ${s.name} 启用 Ingress 时必须选择入口 Workload`;
+        }
 
         for (const c of s.containers) {
           if (!c.name?.trim()) return `Container 名称不能为空 (in Service ${s.name})`;
@@ -425,7 +493,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
           
           if (!Number.isFinite(c.replicas) || c.replicas < 0) return `Container ${c.name} Replicas 不能小于 0`;
           if (!Number.isFinite(c.maxReplicas) || c.maxReplicas < c.replicas) return `Container ${c.name} Max Replicas 不能小于 Replicas`;
-          if (c.enableIngress && !c.ingressDomain?.trim()) return `Container ${c.name} 启用 Ingress 时必须填写域名`;
           
           if (validateJson(c.affinityJson)) return `Container ${c.name} affinityJson 格式错误`;
           if (validateJson(c.tolerationsJson)) return `Container ${c.name} tolerationsJson 格式错误`;
@@ -439,6 +506,20 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
               if (nodePortStatus[p.nodePort]?.available === false) return `NodePort ${p.nodePort} 已被占用`;
             }
           }
+        }
+      }
+
+      if (istioDraft.entry.enabled) {
+        if (!istioDraft.entry.host?.trim()) return '启用 Istio Entry 时必须填写 Host/Domain';
+        if (!istioDraft.entry.target) return '启用 Istio Entry 时必须选择 Target';
+        if (!Number.isFinite(istioDraft.entry.target.port) || istioDraft.entry.target.port < 1) return 'Istio Entry Target Port 不合法';
+      }
+
+      for (const [svcName, draft] of Object.entries(istioDraft.services)) {
+        if (!draft?.enabled) continue;
+        if (draft.trafficSplit?.enabled) {
+          const sum = Object.values(draft.trafficSplit.weights || {}).reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+          if (sum !== 100) return `Service ${svcName} 的 Traffic Split 权重总和必须为 100（当前为 ${sum}）`;
         }
       }
     }
@@ -651,6 +732,151 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
 
             {step === 1 && (
               <div className="space-y-6">
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
+                  <div
+                    className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
+                    onClick={() => setIstioEntryExpanded((v) => !v)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      {istioEntryExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Istio Entry (Gateway & Route)</span>
+                      <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                        {istioDraft.entry.enabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {istioEntryExpanded && (
+                    <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                      <div className="flex flex-wrap items-center gap-6">
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            checked={istioDraft.entry.enabled}
+                            onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, enabled: e.target.checked } }))}
+                          />
+                          <span className="text-sm text-slate-600 dark:text-slate-400">Enable Istio Entry</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">Host / Domain</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. bookinfo.example.com"
+                            disabled={!istioDraft.entry.enabled}
+                            className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-60"
+                            value={istioDraft.entry.host}
+                            onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, host: e.target.value } }))}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Gateway Namespace</label>
+                            <input
+                              type="text"
+                              disabled={!istioDraft.entry.enabled}
+                              className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-60"
+                              value={istioDraft.entry.gatewayRef.namespace}
+                              onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, gatewayRef: { ...prev.entry.gatewayRef, namespace: e.target.value } } }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Gateway Name</label>
+                            <input
+                              type="text"
+                              disabled={!istioDraft.entry.enabled}
+                              className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-60"
+                              value={istioDraft.entry.gatewayRef.name}
+                              onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, gatewayRef: { ...prev.entry.gatewayRef, name: e.target.value } } }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                        <div className="text-xs font-medium text-slate-500 mb-2">Target (Service / Workload / Port)</div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <select
+                            disabled={!istioDraft.entry.enabled}
+                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60 cursor-pointer"
+                            value={istioDraft.entry.target?.serviceName ?? ''}
+                            onChange={(e) => {
+                              const nextSvcName = e.target.value;
+                              const svc = formState.services.find((s) => s.name === nextSvcName);
+                              const cnt = svc?.containers[0];
+                              const port = cnt?.ports[0]?.port ?? 80;
+                              setIstioDraft((prev) => ({
+                                ...prev,
+                                entry: {
+                                  ...prev.entry,
+                                  target: nextSvcName && cnt
+                                    ? { serviceName: nextSvcName, workloadName: cnt.name, port }
+                                    : null,
+                                },
+                              }));
+                            }}
+                          >
+                            <option value="" disabled>Select service</option>
+                            {formState.services.filter((s) => s.name.trim()).map((s) => (
+                              <option key={s.id} value={s.name}>{s.name}</option>
+                            ))}
+                          </select>
+
+                          <select
+                            disabled={!istioDraft.entry.enabled || !istioDraft.entry.target?.serviceName}
+                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60 cursor-pointer"
+                            value={istioDraft.entry.target?.workloadName ?? ''}
+                            onChange={(e) => {
+                              const svcName = istioDraft.entry.target?.serviceName;
+                              const svc = formState.services.find((s) => s.name === svcName);
+                              const cnt = svc?.containers.find((c) => c.name === e.target.value) ?? svc?.containers[0];
+                              const port = cnt?.ports[0]?.port ?? 80;
+                              if (!svcName || !cnt) return;
+                              setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, target: { serviceName: svcName, workloadName: cnt.name, port } } }));
+                            }}
+                          >
+                            <option value="" disabled>Select workload</option>
+                            {(() => {
+                              const svcName = istioDraft.entry.target?.serviceName;
+                              const svc = formState.services.find((s) => s.name === svcName);
+                              return (svc?.containers ?? []).map((c) => (
+                                <option key={c.id} value={c.name}>{c.name}</option>
+                              ));
+                            })()}
+                          </select>
+
+                          <select
+                            disabled={!istioDraft.entry.enabled || !istioDraft.entry.target?.serviceName}
+                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60 cursor-pointer"
+                            value={istioDraft.entry.target?.port ?? ''}
+                            onChange={(e) => {
+                              const svcName = istioDraft.entry.target?.serviceName;
+                              const workloadName = istioDraft.entry.target?.workloadName;
+                              const port = Number(e.target.value);
+                              if (!svcName || !workloadName || !Number.isFinite(port)) return;
+                              setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, target: { serviceName: svcName, workloadName, port } } }));
+                            }}
+                          >
+                            <option value="" disabled>Select port</option>
+                            {(() => {
+                              const svcName = istioDraft.entry.target?.serviceName;
+                              const workloadName = istioDraft.entry.target?.workloadName;
+                              const svc = formState.services.find((s) => s.name === svcName);
+                              const cnt = svc?.containers.find((c) => c.name === workloadName);
+                              return (cnt?.ports ?? []).map((p, idx) => (
+                                <option key={idx} value={p.port}>{p.port}/{p.protocol}</option>
+                              ));
+                            })()}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100">Services</h3>
                   <button
@@ -690,36 +916,163 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                           </button>
                         </div>
 
-                        {isSvcExpanded && (
-                          <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-6">
-                            {/* Service Info */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Service Name</label>
-                                <input
-                                  type="text"
-                                  disabled={!!initialApp}
-                                  className={`w-full px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm ${initialApp ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500'}`}
-                                  value={svc.name}
-                                  onChange={(e) => updateService(sIdx, s => ({ ...s, name: e.target.value }))}
-                                />
-                              </div>
-                            </div>
+                        {isSvcExpanded && (() => {
+                          const sections = expandedSvcSections[svc.id] ?? new Set<'networking' | 'workloads' | 'istio'>(['networking', 'workloads']);
+                          const isNetworkingExpanded = sections.has('networking');
+                          const isWorkloadsExpanded = sections.has('workloads');
+                          const isIstioExpanded = sections.has('istio');
 
-                            {/* Containers List */}
-                            <div>
-                              <div className="flex justify-between items-center mb-3">
-                                <h4 className="text-sm font-medium text-slate-800 dark:text-slate-200">Workloads</h4>
-                                <button
-                                  type="button"
-                                  onClick={() => updateService(sIdx, s => ({ ...s, containers: [...s.containers, initialContainer()] }))}
-                                  className="text-xs flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
-                                  disabled={!!initialApp}
-                                >
-                                  <Plus size={14} /> <span>Add Workload</span>
-                                </button>
+                          const portKey = (p: PortSpecState) => `${p.protocol}:${p.port}`;
+                          const allPorts = svc.containers.flatMap((c) => c.ports.map((p) => ({ ...p, _w: c.name })));
+                          const uniquePorts = Array.from(new Map(allPorts.map((p) => [portKey(p), p])).values());
+
+                          const workloadPortSets = svc.containers.map((c) => new Set(c.ports.map(portKey)));
+                          const firstSet = workloadPortSets[0] ?? new Set<string>();
+                          const portsInconsistent = workloadPortSets.some((s) => {
+                            if (s.size !== firstSet.size) return true;
+                            for (const k of s) if (!firstSet.has(k)) return true;
+                            return false;
+                          });
+
+                          return (
+                            <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <label className="block text-xs font-medium text-slate-500 mb-1">Service Name</label>
+                                  <input
+                                    type="text"
+                                    disabled={!!initialApp}
+                                    className={`w-full px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm ${initialApp ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500'}`}
+                                    value={svc.name}
+                                    onChange={(e) => updateService(sIdx, s => ({ ...s, name: e.target.value }))}
+                                  />
+                                </div>
                               </div>
-                              <div className="space-y-3">
+
+                              <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                                <div
+                                  className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none"
+                                  onClick={() => toggleServiceSection(svc.id, 'networking')}
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    {isNetworkingExpanded ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}
+                                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Networking (K8s Service)</span>
+                                  </div>
+                                </div>
+                                {isNetworkingExpanded && (
+                                  <div className="p-3 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                                    <div className="flex flex-wrap items-center gap-6">
+                                      <label className="flex items-center space-x-2 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                          checked={svc.enableService}
+                                          onChange={(e) => updateService(sIdx, s => ({ ...s, enableService: e.target.checked }))}
+                                        />
+                                        <span className="text-sm text-slate-600 dark:text-slate-400">Enable Service</span>
+                                      </label>
+                                      <div className="flex items-center space-x-2">
+                                        <span className="text-sm text-slate-600 dark:text-slate-400">Type</span>
+                                        <select
+                                          disabled={!svc.enableService}
+                                          className="px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60"
+                                          value={svc.serviceType}
+                                          onChange={(e) => updateService(sIdx, s => ({ ...s, serviceType: (e.target.value as 'ClusterIP' | 'NodePort') }))}
+                                        >
+                                          <option value="ClusterIP">ClusterIP</option>
+                                          <option value="NodePort">NodePort</option>
+                                        </select>
+                                      </div>
+                                    </div>
+
+                                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Ingress (K8s)</div>
+                                        {portsInconsistent && (
+                                          <div className="text-xs text-amber-600">Workload ports 不一致，可能影响统一暴露</div>
+                                        )}
+                                      </div>
+                                      <div className="flex flex-col gap-2">
+                                        <label className="flex items-center space-x-2 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                            checked={svc.enableIngress}
+                                            onChange={(e) => updateService(sIdx, s => ({
+                                              ...s,
+                                              enableIngress: e.target.checked,
+                                              ingressTargetWorkloadId: e.target.checked ? (s.ingressTargetWorkloadId ?? s.containers[0]?.id) : s.ingressTargetWorkloadId,
+                                            }))}
+                                          />
+                                          <span className="text-sm text-slate-600 dark:text-slate-400">Enable Ingress</span>
+                                        </label>
+
+                                        {svc.enableIngress && (
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <input
+                                              type="text"
+                                              placeholder="Ingress Domain (e.g. app.domain.com)"
+                                              className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                              value={svc.ingressDomain}
+                                              onChange={(e) => updateService(sIdx, s => ({ ...s, ingressDomain: e.target.value }))}
+                                            />
+                                            <select
+                                              className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm cursor-pointer"
+                                              value={svc.ingressTargetWorkloadId ?? ''}
+                                              onChange={(e) => updateService(sIdx, s => ({ ...s, ingressTargetWorkloadId: e.target.value }))}
+                                            >
+                                              <option value="" disabled>Select entry workload</option>
+                                              {svc.containers.map((c) => (
+                                                <option key={c.id} value={c.id}>{c.name || 'Unnamed'}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                                      <div className="text-xs font-medium text-slate-500 mb-1">Ports (from Workloads)</div>
+                                      <div className="flex flex-wrap gap-2">
+                                        {uniquePorts.length === 0 ? (
+                                          <span className="text-xs text-slate-400">No ports</span>
+                                        ) : (
+                                          uniquePorts.map((p) => (
+                                            <span key={portKey(p)} className="text-xs bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded font-mono">
+                                              {p.protocol}:{p.port}
+                                            </span>
+                                          ))
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                                <div
+                                  className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none"
+                                  onClick={() => toggleServiceSection(svc.id, 'workloads')}
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    {isWorkloadsExpanded ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}
+                                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Workloads (K8s Deployment)</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      updateService(sIdx, s => ({ ...s, containers: [...s.containers, initialContainer()] }));
+                                    }}
+                                    className="text-xs flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
+                                    disabled={!!initialApp}
+                                  >
+                                    <Plus size={14} /> <span>Add Workload</span>
+                                  </button>
+                                </div>
+                                {isWorkloadsExpanded && (
+                                  <div className="p-3 border-t border-slate-200 dark:border-slate-700">
+                                    <div className="space-y-3">
                                 {svc.containers.map((cnt, cIdx) => {
                                   const isCntExpanded = expandedContainers.has(cnt.id) || svc.containers.length === 1;
                                   return (
@@ -737,7 +1090,12 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                             type="button"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              updateService(sIdx, s => ({ ...s, containers: s.containers.filter((_, i) => i !== cIdx) }));
+                                              updateService(sIdx, s => {
+                                                const nextContainers = s.containers.filter((_, i) => i !== cIdx);
+                                                const removedId = s.containers[cIdx]?.id;
+                                                const nextTarget = removedId && s.ingressTargetWorkloadId === removedId ? nextContainers[0]?.id : s.ingressTargetWorkloadId;
+                                                return { ...s, containers: nextContainers, ingressTargetWorkloadId: nextTarget };
+                                              });
                                             }}
                                             disabled={!!initialApp}
                                             className={`p-1 rounded transition-colors ${initialApp ? 'text-slate-400 cursor-not-allowed' : 'text-red-500 hover:bg-red-100'}`}
@@ -833,40 +1191,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                                   onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, targetMemoryUtilization: e.target.value ? Number(e.target.value) : undefined }))}
                                                 />
                                               </div>
-                                            </div>
-                                          </div>
-
-                                          {/* Routing */}
-                                          <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
-                                            <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Routing & Ingress</h4>
-                                            <div className="flex items-center space-x-6">
-                                              <label className="flex items-center space-x-2 cursor-pointer">
-                                                <input 
-                                                  type="checkbox" 
-                                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                  checked={cnt.enableService}
-                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, enableService: e.target.checked }))}
-                                                />
-                                                <span className="text-sm text-slate-600 dark:text-slate-400">Enable Service</span>
-                                              </label>
-                                              <label className="flex items-center space-x-2 cursor-pointer">
-                                                <input 
-                                                  type="checkbox" 
-                                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                  checked={cnt.enableIngress}
-                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, enableIngress: e.target.checked }))}
-                                                />
-                                                <span className="text-sm text-slate-600 dark:text-slate-400">Enable Ingress</span>
-                                              </label>
-                                              {cnt.enableIngress && (
-                                                <input
-                                                  type="text"
-                                                  placeholder="Ingress Domain (e.g. app.domain.com)"
-                                                  className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                                  value={cnt.ingressDomain}
-                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, ingressDomain: e.target.value }))}
-                                                />
-                                              )}
                                             </div>
                                           </div>
 
@@ -1115,10 +1439,198 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                     </div>
                                   );
                                 })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                                <div
+                                  className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none"
+                                  onClick={() => toggleServiceSection(svc.id, 'istio')}
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    {isIstioExpanded ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}
+                                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Istio (Traffic & Policy)</span>
+                                  </div>
+                                </div>
+                                {isIstioExpanded && (
+                                  <div className="p-3 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                                    {(() => {
+                                      const svcKey = svc.name.trim();
+                                      const inferredSubsets = svc.containers
+                                        .map((c) => c.name.trim())
+                                        .filter(Boolean)
+                                        .map((name) => ({ name, labels: { version: name } }));
+
+                                      const current = (svcKey && istioDraft.services[svcKey]) ? istioDraft.services[svcKey] : undefined;
+                                      const enabled = Boolean(current?.enabled);
+                                      const subsets = current?.subsets?.length ? current.subsets : inferredSubsets;
+                                      const weights: Record<string, number> = (current?.trafficSplit?.weights as Record<string, number> | undefined)
+                                        ?? (Object.fromEntries(subsets.map((s) => [s.name, Math.floor(100 / Math.max(1, subsets.length))])) as Record<string, number>);
+                                      const sum = Object.values(weights).reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0 as number);
+
+                                      const setServiceDraft = (patcher: (prevDraft: NonNullable<typeof current>) => NonNullable<typeof current>) => {
+                                        if (!svcKey) return;
+                                        setIstioDraft((prev) => {
+                                          const prevSvc = prev.services[svcKey] ?? {
+                                            enabled: false,
+                                            subsets,
+                                            trafficSplit: { enabled: false, weights: Object.fromEntries(subsets.map((s) => [s.name, 0])) },
+                                            resilience: { timeout: '2s', retriesAttempts: 2, perTryTimeout: '1s' },
+                                          };
+                                          return { ...prev, services: { ...prev.services, [svcKey]: patcher(prevSvc) } };
+                                        });
+                                      };
+
+                                      return (
+                                        <>
+                                          <div className="flex items-center justify-between">
+                                            <label className="flex items-center space-x-2 cursor-pointer">
+                                              <input
+                                                type="checkbox"
+                                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                checked={enabled}
+                                                disabled={!svcKey}
+                                                onChange={(e) => {
+                                                  const nextEnabled = e.target.checked;
+                                                  if (!svcKey) return;
+                                                  setIstioDraft((prev) => {
+                                                    const prevSvc = prev.services[svcKey] ?? {
+                                                      enabled: false,
+                                                      subsets,
+                                                      trafficSplit: { enabled: false, weights: Object.fromEntries(subsets.map((s) => [s.name, 0])) },
+                                                      resilience: { timeout: '2s', retriesAttempts: 2, perTryTimeout: '1s' },
+                                                    };
+                                                    return { ...prev, services: { ...prev.services, [svcKey]: { ...prevSvc, enabled: nextEnabled, subsets } } };
+                                                  });
+                                                }}
+                                              />
+                                              <span className="text-sm text-slate-700 dark:text-slate-300">Enable Istio for this Service</span>
+                                            </label>
+                                            <span className="text-xs text-slate-400">YAML only</span>
+                                          </div>
+
+                                          {enabled && (
+                                            <div className="space-y-4">
+                                              <div>
+                                                <div className="text-xs font-medium text-slate-500 mb-2">Subsets (by Workload)</div>
+                                                <div className="space-y-2">
+                                                  {subsets.map((s) => (
+                                                    <div key={s.name} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                      <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-sm font-mono">
+                                                        {s.name}
+                                                      </div>
+                                                      <input
+                                                        type="text"
+                                                        className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm font-mono"
+                                                        value={s.labels.version ?? s.name}
+                                                        onChange={(e) => {
+                                                          const v = e.target.value;
+                                                          setServiceDraft((prevSvc) => ({
+                                                            ...prevSvc,
+                                                            subsets: (prevSvc.subsets?.length ? prevSvc.subsets : subsets).map((it) => it.name === s.name ? ({ ...it, labels: { ...it.labels, version: v } }) : it),
+                                                          }));
+                                                        }}
+                                                        placeholder="version label value"
+                                                      />
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+
+                                              <div className="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                  <label className="flex items-center space-x-2 cursor-pointer">
+                                                    <input
+                                                      type="checkbox"
+                                                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                      checked={Boolean(current?.trafficSplit?.enabled)}
+                                                      disabled={subsets.length < 2}
+                                                      onChange={(e) => {
+                                                        const nextEnabled = e.target.checked;
+                                                        setServiceDraft((prevSvc) => ({
+                                                          ...prevSvc,
+                                                          trafficSplit: {
+                                                            enabled: nextEnabled,
+                                                            weights: prevSvc.trafficSplit?.weights ?? Object.fromEntries(subsets.map((s) => [s.name, 0])),
+                                                          },
+                                                        }));
+                                                      }}
+                                                    />
+                                                    <span className={`text-sm ${subsets.length < 2 ? 'text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}>Traffic Split</span>
+                                                  </label>
+                                                  {Boolean(current?.trafficSplit?.enabled) && (
+                                                    <span className={`text-xs ${sum === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>Weights sum: {sum}</span>
+                                                  )}
+                                                </div>
+
+                                                {Boolean(current?.trafficSplit?.enabled) && (
+                                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    {subsets.map((s) => (
+                                                      <div key={s.name} className="flex items-center gap-2">
+                                                        <span className="text-xs font-mono w-20 truncate">{s.name}</span>
+                                                        <input
+                                                          type="number"
+                                                          min={0}
+                                                          max={100}
+                                                          className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm"
+                                                          value={weights[s.name] ?? 0}
+                                                          onChange={(e) => {
+                                                            const next = Number(e.target.value);
+                                                            setServiceDraft((prevSvc) => ({
+                                                              ...prevSvc,
+                                                              trafficSplit: {
+                                                                enabled: true,
+                                                                weights: { ...(prevSvc.trafficSplit?.weights ?? {}), [s.name]: Number.isFinite(next) ? next : 0 },
+                                                              },
+                                                            }));
+                                                          }}
+                                                        />
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                              </div>
+
+                                              <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                                                <div className="text-xs font-medium text-slate-500 mb-2">Resilience</div>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                  <input
+                                                    type="text"
+                                                    className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm font-mono"
+                                                    value={current?.resilience?.timeout ?? '2s'}
+                                                    onChange={(e) => setServiceDraft((prevSvc) => ({ ...prevSvc, resilience: { ...prevSvc.resilience, timeout: e.target.value } }))}
+                                                    placeholder="timeout (e.g. 2s)"
+                                                  />
+                                                  <input
+                                                    type="number"
+                                                    min={0}
+                                                    className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm"
+                                                    value={current?.resilience?.retriesAttempts ?? 2}
+                                                    onChange={(e) => setServiceDraft((prevSvc) => ({ ...prevSvc, resilience: { ...prevSvc.resilience, retriesAttempts: Number(e.target.value) } }))}
+                                                    placeholder="retries attempts"
+                                                  />
+                                                  <input
+                                                    type="text"
+                                                    className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm font-mono"
+                                                    value={current?.resilience?.perTryTimeout ?? '1s'}
+                                                    onChange={(e) => setServiceDraft((prevSvc) => ({ ...prevSvc, resilience: { ...prevSvc.resilience, perTryTimeout: e.target.value } }))}
+                                                    placeholder="perTryTimeout (e.g. 1s)"
+                                                  />
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                )}
                               </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -1176,6 +1688,35 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                     value={JSON.stringify(commandPreview, null, 2)}
                   />
+                </div>
+
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
+                  <div
+                    className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
+                    onClick={() => setIstioPreviewExpanded((v) => !v)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      {istioPreviewExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Istio Preview</span>
+                      <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                        {istioDraft.entry.enabled ? 'Entry enabled' : 'Entry disabled'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {istioPreviewExpanded && (
+                    <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                      <div className="text-sm text-slate-600 dark:text-slate-400">
+                        仅生成 YAML 预览，不会随部署写入集群。
+                      </div>
+                      <textarea
+                        readOnly
+                        rows={12}
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                        value={istioYamlPreview}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
