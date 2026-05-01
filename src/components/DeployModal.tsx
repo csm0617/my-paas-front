@@ -6,7 +6,7 @@ import SchedulingSection from '@/components/SchedulingSection';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useNamespaceStore } from '@/store/namespaceStore';
 import { useAppStore } from '@/store/appStore';
-import { buildIstioYaml, IstioDraft } from '@/lib/istioYaml';
+import { buildIstioYaml, buildSecurityObsYaml, IstioDraft, SecurityObsDraft } from '@/lib/istioYaml';
 
 interface Props {
   isOpen: boolean;
@@ -124,6 +124,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
   const { namespaces, fetchNamespaces, loading: namespacesLoading } = useNamespaceStore();
   const { namespace: currentNamespace } = useAppStore();
   const steps = ['App Info', 'Services & Containers', 'Review'] as const;
+  const defaultIstioGatewayNamespace = import.meta.env.VITE_ISTIO_GATEWAY_NAMESPACE || 'istio-system';
+  const defaultIstioGatewayName = import.meta.env.VITE_ISTIO_GATEWAY_NAME || 'istio-ingressgateway';
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,13 +149,35 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
     entry: {
       enabled: false,
       host: '',
-      gatewayRef: { namespace: 'istio-system', name: 'istio-ingressgateway' },
+      gatewayRef: { namespace: defaultIstioGatewayNamespace, name: defaultIstioGatewayName },
       target: null,
     },
     services: {},
   });
   const [istioEntryExpanded, setIstioEntryExpanded] = useState(true);
   const [istioPreviewExpanded, setIstioPreviewExpanded] = useState(true);
+  const [securityObsDraft, setSecurityObsDraft] = useState<SecurityObsDraft>({
+    enablePeerAuthenticationStrict: false,
+    enableTelemetry: false,
+  });
+  const [securityObsPreviewExpanded, setSecurityObsPreviewExpanded] = useState(true);
+  const [securityObsReviewExpanded, setSecurityObsReviewExpanded] = useState(true);
+
+  type StageState = 'idle' | 'running' | 'success' | 'failed';
+  type StageStatus = { state: StageState; message?: string; at?: number };
+  type ReleaseStages = {
+    workloads: StageStatus;
+    exposure: StageStatus;
+    istioTraffic: StageStatus;
+    securityObs: StageStatus;
+  };
+
+  const [releaseStages, setReleaseStages] = useState<ReleaseStages>({
+    workloads: { state: 'idle' },
+    exposure: { state: 'idle' },
+    istioTraffic: { state: 'idle' },
+    securityObs: { state: 'idle' },
+  });
   
   const [nodeList, setNodeList] = useState<K8sNode[]>([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
@@ -176,13 +200,25 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
       entry: {
         enabled: false,
         host: '',
-        gatewayRef: { namespace: 'istio-system', name: 'istio-ingressgateway' },
+        gatewayRef: { namespace: defaultIstioGatewayNamespace, name: defaultIstioGatewayName },
         target: null,
       },
       services: {},
     });
     setIstioEntryExpanded(true);
     setIstioPreviewExpanded(true);
+    setSecurityObsDraft({
+      enablePeerAuthenticationStrict: false,
+      enableTelemetry: false,
+    });
+    setSecurityObsPreviewExpanded(true);
+    setSecurityObsReviewExpanded(true);
+    setReleaseStages({
+      workloads: { state: 'idle' },
+      exposure: { state: 'idle' },
+      istioTraffic: { state: 'idle' },
+      securityObs: { state: 'idle' },
+    });
 
     if (initialApp && initialServiceName) {
       const svc = initialApp.services.find(s => s.name === initialServiceName);
@@ -454,6 +490,9 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
   const istioYamlPreview = useMemo(() => {
     return buildIstioYaml(commandPreview.namespace, commandPreview.name, istioDraft);
   }, [commandPreview.namespace, commandPreview.name, istioDraft]);
+  const securityObsYamlPreview = useMemo(() => {
+    return buildSecurityObsYaml(commandPreview.namespace, commandPreview.name, securityObsDraft);
+  }, [commandPreview.namespace, commandPreview.name, securityObsDraft]);
 
   if (!isOpen) return null;
 
@@ -572,6 +611,212 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateStageStatus = (key: keyof ReleaseStages, patch: Partial<StageStatus>) => {
+    setReleaseStages((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+  };
+
+  const getWorkloadValidationError = () => {
+    if (!formState.name?.trim()) return 'Application Name 不能为空';
+    if (!formState.namespace?.trim()) return 'Namespace 不能为空';
+    if (formState.services.length === 0) return '至少需要一个 Service';
+
+    const nodePorts = new Set<number>();
+    for (const s of formState.services) {
+      if (!s.name?.trim()) return 'Service 名称不能为空';
+      if (s.containers.length === 0) return `Service ${s.name} 至少需要一个 Workload`;
+
+      for (const c of s.containers) {
+        if (!c.name?.trim()) return `Workload 名称不能为空 (in Service ${s.name})`;
+        if (!c.image?.trim()) return `Workload ${c.name} 镜像不能为空`;
+
+        if (!Number.isFinite(c.replicas) || c.replicas < 0) return `Workload ${c.name} Replicas 不能小于 0`;
+        if (!Number.isFinite(c.maxReplicas) || c.maxReplicas < c.replicas) return `Workload ${c.name} Max Replicas 不能小于 Replicas`;
+
+        for (const p of c.ports) {
+          if (!Number.isFinite(p.port) || p.port < 1 || p.port > 65535) return `Workload ${c.name} 端口必须在 1-65535 之间`;
+          if (p.enableNodePort && p.nodePort !== undefined) {
+            if (p.nodePort < 30000 || p.nodePort > 32767) return `NodePort 必须在 30000-32767 之间`;
+            if (nodePorts.has(p.nodePort)) return `NodePort ${p.nodePort} 在当前表单中重复配置`;
+            nodePorts.add(p.nodePort);
+            if (nodePortStatus[p.nodePort]?.available === false) return `NodePort ${p.nodePort} 已被占用`;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  const buildWorkloadsCommand = (): DeployCommand => {
+    const base = buildCommand();
+    return {
+      ...base,
+      services: base.services.map((s) => ({
+        ...s,
+        enableService: true,
+        serviceType: 'ClusterIP',
+        enableIngress: false,
+        ingressDomain: '',
+        containers: s.containers.map((c) => ({
+          ...c,
+          enableService: true,
+          serviceType: 'ClusterIP',
+          enableIngress: false,
+          ingressDomain: '',
+        })),
+      })),
+    };
+  };
+
+  const applyStageWorkloads = async (): Promise<boolean> => {
+    const err = getWorkloadValidationError();
+    if (err) {
+      setError(err);
+      return false;
+    }
+
+    setError(null);
+    updateStageStatus('workloads', { state: 'running', message: undefined, at: Date.now() });
+    try {
+      await onDeploy(buildWorkloadsCommand());
+      updateStageStatus('workloads', { state: 'success', at: Date.now() });
+      return true;
+    } catch (e: any) {
+      updateStageStatus('workloads', { state: 'failed', message: e?.response?.data?.message || e?.message || 'Deploy failed', at: Date.now() });
+      return false;
+    }
+  };
+
+  const applyStageExposure = async (): Promise<boolean> => {
+    if (releaseStages.workloads.state !== 'success') {
+      setError('请先完成 Stage 1: Deploy Workloads');
+      return false;
+    }
+
+    const portsForService = (s: ServiceState) => {
+      const map = new Map<string, PortSpec>();
+      for (const c of s.containers) {
+        for (const p of c.ports) {
+          const key = `${p.protocol}:${p.port}`;
+          if (!map.has(key)) {
+            map.set(key, { port: p.port, protocol: p.protocol, enableNodePort: p.enableNodePort, nodePort: p.nodePort });
+          }
+        }
+      }
+      return Array.from(map.values());
+    };
+
+    for (const s of formState.services) {
+      if (!s.name?.trim()) {
+        setError('Service 名称不能为空');
+        return false;
+      }
+      if (!s.enableService && s.enableIngress) {
+        setError(`Service ${s.name} 关闭 Service 时不能单独启用 Ingress`);
+        return false;
+      }
+      if (s.enableIngress) {
+        if (!s.ingressDomain?.trim()) {
+          setError(`Service ${s.name} 启用 Ingress 时必须填写域名`);
+          return false;
+        }
+        if (!s.ingressTargetWorkloadId) {
+          setError(`Service ${s.name} 启用 Ingress 时必须选择入口 Workload`);
+          return false;
+        }
+      }
+      if (s.enableService && portsForService(s).length === 0) {
+        setError(`Service ${s.name} 启用 Service 时必须至少存在一个端口`);
+        return false;
+      }
+    }
+
+    setError(null);
+    updateStageStatus('exposure', { state: 'running', message: undefined, at: Date.now() });
+    try {
+      for (const s of formState.services) {
+        await api.updateServiceNetwork(formState.namespace, formState.name, s.name, {
+          enableService: s.enableService,
+          serviceType: s.serviceType,
+          ports: portsForService(s),
+          enableIngress: s.enableIngress,
+          ingressDomain: s.ingressDomain,
+        });
+      }
+      updateStageStatus('exposure', { state: 'success', at: Date.now() });
+      return true;
+    } catch (e: any) {
+      updateStageStatus('exposure', { state: 'failed', message: e?.response?.data?.message || e?.message || 'Apply exposure failed', at: Date.now() });
+      return false;
+    }
+  };
+
+  const applyStageIstioTraffic = async (): Promise<boolean> => {
+    if (releaseStages.workloads.state !== 'success') {
+      setError('请先完成 Stage 1: Deploy Workloads');
+      return false;
+    }
+
+    if (istioDraft.entry.enabled) {
+      if (!istioDraft.entry.host?.trim()) {
+        setError('启用 Istio Entry 时必须填写 Host/Domain');
+        return false;
+      }
+      if (!istioDraft.entry.target) {
+        setError('启用 Istio Entry 时必须选择 Target');
+        return false;
+      }
+    }
+
+    if (!istioYamlPreview.trim()) {
+      setError('当前没有可 apply 的 Istio YAML');
+      return false;
+    }
+
+    setError(null);
+    updateStageStatus('istioTraffic', { state: 'running', message: undefined, at: Date.now() });
+    try {
+      await api.applyIstioYaml(formState.namespace, formState.name, istioYamlPreview);
+      updateStageStatus('istioTraffic', { state: 'success', at: Date.now() });
+      return true;
+    } catch (e: any) {
+      updateStageStatus('istioTraffic', { state: 'failed', message: e?.response?.data?.message || e?.message || 'Apply Istio failed', at: Date.now() });
+      return false;
+    }
+  };
+
+  const applyStageSecurityObs = async (): Promise<boolean> => {
+    if (releaseStages.workloads.state !== 'success') {
+      setError('请先完成 Stage 1: Deploy Workloads');
+      return false;
+    }
+
+    if (!securityObsYamlPreview.trim()) {
+      setError('当前没有可 apply 的安全/观测 YAML（请至少开启一个选项）');
+      return false;
+    }
+
+    setError(null);
+    updateStageStatus('securityObs', { state: 'running', message: undefined, at: Date.now() });
+    try {
+      await api.applyIstioYaml(formState.namespace, formState.name, securityObsYamlPreview);
+      updateStageStatus('securityObs', { state: 'success', at: Date.now() });
+      return true;
+    } catch (e: any) {
+      updateStageStatus('securityObs', { state: 'failed', message: e?.response?.data?.message || e?.message || 'Apply security/obs failed', at: Date.now() });
+      return false;
+    }
+  };
+
+  const applyAllStages = async () => {
+    const ok1 = await applyStageWorkloads();
+    if (!ok1) return;
+    const ok2 = await applyStageExposure();
+    if (!ok2) return;
+    const ok3 = await applyStageIstioTraffic();
+    if (!ok3) return;
+    await applyStageSecurityObs();
   };
 
   const renderKeyValueList = (
@@ -733,6 +978,91 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
             {step === 1 && (
               <div className="space-y-6">
                 <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
+                  <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">Release Stages</div>
+                      <button
+                        type="button"
+                        onClick={applyAllStages}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                      >
+                        Apply All (1→4)
+                      </button>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">按阶段逐步生效：先 Workload，再暴露，再 Istio，再安全/观测。</div>
+                  </div>
+
+                  <div className="p-4 space-y-3 border-t border-slate-200 dark:border-slate-700">
+                    {([
+                      {
+                        key: 'workloads' as const,
+                        title: '1) Deploy Workloads',
+                        action: applyStageWorkloads,
+                        disabled: false,
+                      },
+                      {
+                        key: 'exposure' as const,
+                        title: '2) Apply Service Exposure',
+                        action: applyStageExposure,
+                        disabled: releaseStages.workloads.state !== 'success',
+                      },
+                      {
+                        key: 'istioTraffic' as const,
+                        title: '3) Apply Istio Traffic',
+                        action: applyStageIstioTraffic,
+                        disabled: releaseStages.workloads.state !== 'success',
+                      },
+                      {
+                        key: 'securityObs' as const,
+                        title: '4) Apply Security & Observability',
+                        action: applyStageSecurityObs,
+                        disabled: releaseStages.workloads.state !== 'success',
+                      },
+                    ] as const).map((s) => {
+                      const status = releaseStages[s.key];
+                      const badge =
+                        status.state === 'success'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : status.state === 'failed'
+                            ? 'bg-red-100 text-red-700'
+                            : status.state === 'running'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-slate-100 text-slate-600';
+                      const badgeText =
+                        status.state === 'success'
+                          ? 'Success'
+                          : status.state === 'failed'
+                            ? 'Failed'
+                            : status.state === 'running'
+                              ? 'Running'
+                              : 'Idle';
+
+                      return (
+                        <div key={s.key} className="flex items-start justify-between gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{s.title}</div>
+                              <span className={`text-[11px] px-2 py-0.5 rounded-full ${badge}`}>{badgeText}</span>
+                            </div>
+                            {status.message && (
+                              <div className="text-xs text-red-600 mt-1 break-words">{status.message}</div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={s.action}
+                            disabled={s.disabled || status.state === 'running'}
+                            className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
                   <div
                     className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
                     onClick={() => setIstioEntryExpanded((v) => !v)}
@@ -873,6 +1203,45 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                           </select>
                         </div>
                       </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
+                  <div
+                    className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
+                    onClick={() => setSecurityObsPreviewExpanded((v) => !v)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      {securityObsPreviewExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Security & Observability</span>
+                    </div>
+                    <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                      {securityObsDraft.enableTelemetry || securityObsDraft.enablePeerAuthenticationStrict ? 'Configured' : 'Disabled'}
+                    </span>
+                  </div>
+
+                  {securityObsPreviewExpanded && (
+                    <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          checked={securityObsDraft.enableTelemetry}
+                          onChange={(e) => setSecurityObsDraft((prev) => ({ ...prev, enableTelemetry: e.target.checked }))}
+                        />
+                        <span className="text-sm text-slate-600 dark:text-slate-400">Enable Telemetry (YAML apply)</span>
+                      </label>
+
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          checked={securityObsDraft.enablePeerAuthenticationStrict}
+                          onChange={(e) => setSecurityObsDraft((prev) => ({ ...prev, enablePeerAuthenticationStrict: e.target.checked }))}
+                        />
+                        <span className="text-sm text-slate-600 dark:text-slate-400">Enable mTLS STRICT (PeerAuthentication)</span>
+                      </label>
                     </div>
                   )}
                 </div>
@@ -1714,6 +2083,32 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                         rows={12}
                         className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                         value={istioYamlPreview}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
+                  <div
+                    className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
+                    onClick={() => setSecurityObsReviewExpanded((v) => !v)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      {securityObsReviewExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Security & Observability Preview</span>
+                      <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                        {securityObsYamlPreview.trim() ? 'YAML ready' : 'Disabled'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {securityObsReviewExpanded && (
+                    <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                      <textarea
+                        readOnly
+                        rows={10}
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                        value={securityObsYamlPreview}
                       />
                     </div>
                   )}

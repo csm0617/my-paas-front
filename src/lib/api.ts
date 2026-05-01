@@ -282,6 +282,10 @@ export const api = {
     await apiClient.put(`/applications/deployments/${namespace}/${name}/services/${serviceName}/network`, request);
   },
 
+  applyIstioYaml: async (namespace: string, name: string, yaml: string): Promise<void> => {
+    await apiClient.post(`/applications/deployments/${namespace}/${name}/istio/apply`, { yaml });
+  },
+
   scale: async (namespace: string, name: string, serviceName: string, replicas: number): Promise<void> => {
     await apiClient.put(`/applications/deployments/${namespace}/${name}/${serviceName}/scale`, null, {
       params: { replicas },

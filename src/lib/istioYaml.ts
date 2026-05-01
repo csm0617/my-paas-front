@@ -50,8 +50,15 @@ export const istioNames = (appName: string) => {
     gateway: `${safeApp}-gateway`,
     virtualService: `${safeApp}-vs`,
     destinationRule: (serviceName: string) => `${safeApp}-${serviceName}-dr`,
+    serviceVirtualService: (serviceName: string) => `${safeApp}-${serviceName}-vs`,
+    telemetry: `${safeApp}-telemetry`,
+    peerAuthentication: `${safeApp}-mtls`,
   };
 };
+
+const ISTIO_NETWORKING_API_VERSION = 'networking.istio.io/v1beta1';
+const ISTIO_SECURITY_API_VERSION = 'security.istio.io/v1beta1';
+const ISTIO_TELEMETRY_API_VERSION = 'telemetry.istio.io/v1alpha1';
 
 const indent = (s: string, n: number) => {
   const pad = ' '.repeat(n);
@@ -72,7 +79,7 @@ export const buildIstioYaml = (namespace: string, appName: string, draft: IstioD
 
     docs.push(
       [
-        'apiVersion: networking.istio.io/v1beta1',
+        `apiVersion: ${ISTIO_NETWORKING_API_VERSION}`,
         'kind: Gateway',
         'metadata:',
         indent(`name: ${names.gateway}\nnamespace: ${namespace}`, 2),
@@ -106,7 +113,7 @@ export const buildIstioYaml = (namespace: string, appName: string, draft: IstioD
 
     docs.push(
       [
-        'apiVersion: networking.istio.io/v1beta1',
+        `apiVersion: ${ISTIO_NETWORKING_API_VERSION}`,
         'kind: VirtualService',
         'metadata:',
         indent(`name: ${names.virtualService}\nnamespace: ${namespace}`, 2),
@@ -148,6 +155,53 @@ export const buildIstioYaml = (namespace: string, appName: string, draft: IstioD
     if (!svcDraft.enabled) continue;
     const drName = names.destinationRule(svcName);
 
+    if (svcDraft.trafficSplit?.enabled) {
+      const timeout = svcDraft.resilience?.timeout || '2s';
+      const attempts = svcDraft.resilience?.retriesAttempts ?? 2;
+      const perTryTimeout = svcDraft.resilience?.perTryTimeout || '1s';
+
+      const weights = svcDraft.trafficSplit.weights || {};
+      const routes = Object.entries(weights)
+        .filter(([, w]) => Number.isFinite(w) && w > 0)
+        .map(([subset, w]) => {
+          return [
+            '- destination:',
+            indent(`host: ${svcName}\nsubset: ${subset}`, 2),
+            `  weight: ${w}`,
+          ].join('\n');
+        })
+        .join('\n');
+
+      docs.push(
+        [
+          `apiVersion: ${ISTIO_NETWORKING_API_VERSION}`,
+          'kind: VirtualService',
+          'metadata:',
+          indent(`name: ${names.serviceVirtualService(svcName)}\nnamespace: ${namespace}`, 2),
+          'spec:',
+          indent(
+            [
+              'hosts:',
+              indent(`- "${svcName}"`, 2),
+              'http:',
+              indent(
+                [
+                  '- route:',
+                  indent(routes || '', 2),
+                  `  timeout: ${timeout}`,
+                  '  retries:',
+                  indent(`attempts: ${attempts}\nperTryTimeout: ${perTryTimeout}`, 2),
+                ].join('\n'),
+                2
+              ),
+            ].join('\n'),
+            2
+          ),
+          '',
+        ].join('\n')
+      );
+    }
+
     const subsetsYaml = svcDraft.subsets.length
       ? [
           'subsets:',
@@ -167,7 +221,7 @@ export const buildIstioYaml = (namespace: string, appName: string, draft: IstioD
 
     docs.push(
       [
-        'apiVersion: networking.istio.io/v1beta1',
+        `apiVersion: ${ISTIO_NETWORKING_API_VERSION}`,
         'kind: DestinationRule',
         'metadata:',
         indent(`name: ${drName}\nnamespace: ${namespace}`, 2),
@@ -181,18 +235,44 @@ export const buildIstioYaml = (namespace: string, appName: string, draft: IstioD
     );
   }
 
-  docs.push(
-    [
-      '# Security placeholders (not applied in phase 1)',
-      '# - PeerAuthentication',
-      '# - AuthorizationPolicy',
-      '# - RequestAuthentication',
-      '# Observability placeholders (not applied in phase 1)',
-      '# - Telemetry',
-      '',
-    ].join('\n')
-  );
-
   return docs.join('---\n');
 };
 
+export type SecurityObsDraft = {
+  enablePeerAuthenticationStrict: boolean;
+  enableTelemetry: boolean;
+};
+
+export const buildSecurityObsYaml = (namespace: string, appName: string, draft: SecurityObsDraft) => {
+  const names = istioNames(appName);
+  const docs: string[] = [];
+
+  if (draft.enablePeerAuthenticationStrict) {
+    docs.push(
+      [
+        `apiVersion: ${ISTIO_SECURITY_API_VERSION}`,
+        'kind: PeerAuthentication',
+        'metadata:',
+        indent(`name: ${names.peerAuthentication}\nnamespace: ${namespace}`, 2),
+        'spec:',
+        indent('mtls:\n  mode: STRICT', 2),
+        '',
+      ].join('\n')
+    );
+  }
+
+  if (draft.enableTelemetry) {
+    docs.push(
+      [
+        `apiVersion: ${ISTIO_TELEMETRY_API_VERSION}`,
+        'kind: Telemetry',
+        'metadata:',
+        indent(`name: ${names.telemetry}\nnamespace: ${namespace}`, 2),
+        'spec: {}',
+        '',
+      ].join('\n')
+    );
+  }
+
+  return docs.join('---\n');
+};
