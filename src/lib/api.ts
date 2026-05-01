@@ -131,6 +131,14 @@ export interface DeployCommand {
   services: ApplicationService[];
 }
 
+export interface UpdateServiceNetworkRequest {
+  enableService: boolean;
+  serviceType: 'ClusterIP' | 'NodePort';
+  ports: PortSpec[];
+  enableIngress: boolean;
+  ingressDomain: string;
+}
+
 export interface Application {
   id: string;
   name: string;
@@ -268,6 +276,10 @@ export const api = {
   deploy: async (command: DeployCommand): Promise<string> => {
     const res = await apiClient.post<Result<string>>(`/applications/deployments`, command);
     return res.data.data;
+  },
+
+  updateServiceNetwork: async (namespace: string, name: string, serviceName: string, request: UpdateServiceNetworkRequest): Promise<void> => {
+    await apiClient.put(`/applications/deployments/${namespace}/${name}/services/${serviceName}/network`, request);
   },
 
   scale: async (namespace: string, name: string, serviceName: string, replicas: number): Promise<void> => {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, Application, DeployCommand } from '@/lib/api';
+import { api, Application, DeployCommand, UpdateServiceNetworkRequest } from '@/lib/api';
 
 interface AppState {
   namespace: string;
@@ -10,6 +10,7 @@ interface AppState {
   setNamespace: (namespace: string) => void;
   fetchDeployments: () => Promise<void>;
   deploy: (command: DeployCommand) => Promise<void>;
+  updateServiceNetwork: (name: string, serviceName: string, request: UpdateServiceNetworkRequest) => Promise<void>;
   scale: (name: string, serviceName: string, workloadName: string, replicas: number) => Promise<void>;
   updateImage: (name: string, serviceName: string, workloadName: string, image: string) => Promise<void>;
   deleteDeployment: (name: string) => Promise<void>;
@@ -56,6 +57,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().fetchDeployments();
     } catch (err: any) {
       throw new Error(err.response?.data?.message || err.message || 'Failed to deploy');
+    }
+  },
+
+  updateServiceNetwork: async (name, serviceName, request) => {
+    try {
+      const { namespace } = get();
+      await api.updateServiceNetwork(namespace, name, serviceName, request);
+      get().fetchDeployments();
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message || err.message || 'Failed to update service network');
     }
   },
 

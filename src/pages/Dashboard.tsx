@@ -4,6 +4,7 @@ import { useNamespaceStore } from '@/store/namespaceStore';
 import ApplicationCard from '@/components/ApplicationCard';
 import ApplicationListItem from '@/components/ApplicationListItem';
 import DeployModal from '@/components/DeployModal';
+import ServiceNetworkModal from '@/components/ServiceNetworkModal';
 import LogsDrawer from '@/components/LogsDrawer';
 import TerminalDrawer from '@/components/TerminalDrawer';
 import YamlModal from '@/components/YamlModal';
@@ -284,12 +285,11 @@ export default function Dashboard() {
         onDeploy={handleDeploy}
       />
       {editServiceApp && (
-        <DeployModal
+        <ServiceNetworkModal
           isOpen={!!editServiceApp}
           onClose={() => setEditServiceApp(null)}
-          onDeploy={handleDeploy}
-          initialApp={editServiceApp.app}
-          initialServiceName={editServiceApp.serviceName}
+          app={editServiceApp.app}
+          serviceName={editServiceApp.serviceName}
         />
       )}
       <LogsDrawer
