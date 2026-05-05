@@ -3,7 +3,7 @@ import { useAppStore } from '@/store/appStore';
 import { useNamespaceStore } from '@/store/namespaceStore';
 import ApplicationCard from '@/components/ApplicationCard';
 import ApplicationListItem from '@/components/ApplicationListItem';
-import DeployModal from '@/components/DeployModal';
+import CreateWizardModal from '@/components/CreateWizardModal';
 import ServiceNetworkModal from '@/components/ServiceNetworkModal';
 import LogsDrawer from '@/components/LogsDrawer';
 import TerminalDrawer from '@/components/TerminalDrawer';
@@ -19,7 +19,7 @@ export default function Dashboard() {
   const { namespace, deployments, loading, error, setNamespace, fetchDeployments, deploy, scale, updateImage, deleteDeployment, start, stop, restart, rollback } = useAppStore();
   const { namespaces, fetchNamespaces } = useNamespaceStore();
 
-  const [isDeployModalOpen, setDeployModalOpen] = useState(false);
+  const [isCreateWizardOpen, setCreateWizardOpen] = useState(false);
   const [editServiceApp, setEditServiceApp] = useState<{ app: Application; serviceName: string } | null>(null);
   const [logsPod, setLogsPod] = useState<Pod | null>(null);
   const [terminalPod, setTerminalPod] = useState<Pod | null>(null);
@@ -88,8 +88,8 @@ export default function Dashboard() {
     setConfirmAction({ type: 'delete', app });
   };
 
-  const handleDeploy = async (command: DeployCommand) => {
-    await deploy(command);
+  const handleDeploy = async (command: DeployCommand): Promise<string> => {
+    return await deploy(command);
   };
 
   const handleStart = async (app: Application) => {
@@ -189,7 +189,7 @@ export default function Dashboard() {
         </div>
 
         <button
-          onClick={() => setDeployModalOpen(true)}
+          onClick={() => setCreateWizardOpen(true)}
           className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 font-medium"
         >
           <Plus size={18} />
@@ -224,7 +224,7 @@ export default function Dashboard() {
               Click "New Application" to create one.
             </p>
             <button
-              onClick={() => setDeployModalOpen(true)}
+              onClick={() => setCreateWizardOpen(true)}
               className="mt-4 flex items-center space-x-2 text-blue-600 font-semibold hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-6 py-2 rounded-full transition-colors"
             >
               <Plus size={18} />
@@ -279,9 +279,9 @@ export default function Dashboard() {
       )}
 
       {/* Modals & Drawers */}
-      <DeployModal
-        isOpen={isDeployModalOpen}
-        onClose={() => setDeployModalOpen(false)}
+      <CreateWizardModal
+        isOpen={isCreateWizardOpen}
+        onClose={() => setCreateWizardOpen(false)}
         onDeploy={handleDeploy}
       />
       {editServiceApp && (

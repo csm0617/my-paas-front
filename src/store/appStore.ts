@@ -9,7 +9,7 @@ interface AppState {
 
   setNamespace: (namespace: string) => void;
   fetchDeployments: () => Promise<void>;
-  deploy: (command: DeployCommand) => Promise<void>;
+  deploy: (command: DeployCommand) => Promise<string>;
   updateServiceNetwork: (name: string, serviceName: string, request: UpdateServiceNetworkRequest) => Promise<void>;
   scale: (name: string, serviceName: string, workloadName: string, replicas: number) => Promise<void>;
   updateImage: (name: string, serviceName: string, workloadName: string, image: string) => Promise<void>;
@@ -53,8 +53,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   deploy: async (command) => {
     try {
-      await api.deploy(command);
+      const id = await api.deploy(command);
       get().fetchDeployments();
+      return id;
     } catch (err: any) {
       throw new Error(err.response?.data?.message || err.message || 'Failed to deploy');
     }

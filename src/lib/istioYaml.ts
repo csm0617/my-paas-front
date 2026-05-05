@@ -47,7 +47,7 @@ export type IstioDraft = {
 export const istioNames = (appName: string) => {
   const safeApp = appName.trim() || 'app';
   return {
-    gateway: `${safeApp}-gateway`,
+    gateway: `${safeApp}-gw`,
     virtualService: `${safeApp}-vs`,
     destinationRule: (serviceName: string) => `${safeApp}-${serviceName}-dr`,
     serviceVirtualService: (serviceName: string) => `${safeApp}-${serviceName}-vs`,
@@ -55,6 +55,41 @@ export const istioNames = (appName: string) => {
     peerAuthentication: `${safeApp}-mtls`,
   };
 };
+
+export const buildCreateEntryIstioDraft = (
+  namespace: string,
+  appName: string,
+  entry: { enabled: boolean; domain: string; targetServiceName: string; targetPort: number },
+  services: Array<{ name: string }>
+): IstioDraft => {
+  const host = entry.domain.trim()
+  const names = istioNames(appName)
+  const targetSvc = services.find((s) => s.name === entry.targetServiceName) || null
+
+  return {
+    entry: {
+      enabled: entry.enabled,
+      host,
+      gatewayRef: { namespace, name: names.gateway },
+      target:
+        entry.enabled && host && targetSvc
+          ? { serviceName: targetSvc.name, workloadName: 'v1', port: entry.targetPort }
+          : null,
+    },
+    services: {
+      ...(targetSvc
+        ? {
+            [targetSvc.name]: {
+              enabled: true,
+              subsets: [],
+              trafficSplit: { enabled: false, weights: {} },
+              resilience: { timeout: '2s', retriesAttempts: 2, perTryTimeout: '1s' },
+            },
+          }
+        : {}),
+    },
+  }
+}
 
 const ISTIO_NETWORKING_API_VERSION = 'networking.istio.io/v1beta1';
 const ISTIO_SECURITY_API_VERSION = 'security.istio.io/v1beta1';
