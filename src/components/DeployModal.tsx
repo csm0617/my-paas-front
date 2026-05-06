@@ -123,7 +123,7 @@ const initialService = (): ServiceState => ({
 export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, initialServiceName }: Props) {
   const { namespaces, fetchNamespaces, loading: namespacesLoading } = useNamespaceStore();
   const { namespace: currentNamespace } = useAppStore();
-  const steps = ['App Info', 'Services & Containers', 'Review'] as const;
+  const steps = ['App Info', 'Services & Containers', 'Microservice Governance', 'Review'] as const;
   const defaultIstioGatewayNamespace = import.meta.env.VITE_ISTIO_GATEWAY_NAMESPACE || 'istio-system';
   const defaultIstioGatewayName = import.meta.env.VITE_ISTIO_GATEWAY_NAME || 'istio-ingressgateway';
   const [step, setStep] = useState(0);
@@ -570,8 +570,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
   };
 
   const validateStep = (currentStep: number) => {
-    if (currentStep === 2) {
-      for (let i = 0; i < 2; i++) {
+    if (currentStep === 3) {
+      for (let i = 0; i < 3; i++) {
         const err = getStepError(i);
         if (err) {
           setError(err);
@@ -603,7 +603,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep(2)) return;
+    if (!validateStep(3)) return;
 
     setLoading(true);
     try {
@@ -1068,208 +1068,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                     })}
                   </div>
                 </div>
-
-                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
-                  <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900">
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        checked={enableMicroserviceGovernance}
-                        onChange={(e) => setEnableMicroserviceGovernance(e.target.checked)}
-                      />
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">Enable Microservice Governance</span>
-                      <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
-                        {enableMicroserviceGovernance ? 'Enabled' : 'Disabled'}
-                      </span>
-                    </label>
-                    <div className="text-xs text-slate-500 mt-1">Enable Istio Gateway, Traffic Management, Security and Observability features.</div>
-                  </div>
-
-                  {enableMicroserviceGovernance && (
-                    <>
-                      <div
-                        className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none border-t border-slate-200 dark:border-slate-700"
-                        onClick={() => setIstioEntryExpanded((v) => !v)}
-                      >
-                        <div className="flex items-center space-x-3">
-                          {istioEntryExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">Istio Entry (Gateway & Route)</span>
-                          <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
-                            {istioDraft.entry.enabled ? 'Enabled' : 'Disabled'}
-                          </span>
-                        </div>
-                      </div>
-
-                  {istioEntryExpanded && (
-                    <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
-                      <div className="flex flex-wrap items-center gap-6">
-                        <label className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            checked={istioDraft.entry.enabled}
-                            onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, enabled: e.target.checked } }))}
-                          />
-                          <span className="text-sm text-slate-600 dark:text-slate-400">Enable Istio Entry</span>
-                        </label>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-medium text-slate-500 mb-1">Host / Domain</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. bookinfo.example.com"
-                            disabled={!istioDraft.entry.enabled}
-                            className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-60"
-                            value={istioDraft.entry.host}
-                            onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, host: e.target.value } }))}
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">Gateway Namespace</label>
-                            <input
-                              type="text"
-                              disabled={!istioDraft.entry.enabled}
-                              className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-60"
-                              value={istioDraft.entry.gatewayRef.namespace}
-                              onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, gatewayRef: { ...prev.entry.gatewayRef, namespace: e.target.value } } }))}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">Gateway Name</label>
-                            <input
-                              type="text"
-                              disabled={!istioDraft.entry.enabled}
-                              className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-60"
-                              value={istioDraft.entry.gatewayRef.name}
-                              onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, gatewayRef: { ...prev.entry.gatewayRef, name: e.target.value } } }))}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                        <div className="text-xs font-medium text-slate-500 mb-2">Target (Service / Workload / Port)</div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <select
-                            disabled={!istioDraft.entry.enabled}
-                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60 cursor-pointer"
-                            value={istioDraft.entry.target?.serviceName ?? ''}
-                            onChange={(e) => {
-                              const nextSvcName = e.target.value;
-                              const svc = formState.services.find((s) => s.name === nextSvcName);
-                              const cnt = svc?.containers[0];
-                              const port = cnt?.ports[0]?.port ?? 80;
-                              setIstioDraft((prev) => ({
-                                ...prev,
-                                entry: {
-                                  ...prev.entry,
-                                  target: nextSvcName && cnt
-                                    ? { serviceName: nextSvcName, workloadName: cnt.name, port }
-                                    : null,
-                                },
-                              }));
-                            }}
-                          >
-                            <option value="" disabled>Select service</option>
-                            {formState.services.filter((s) => s.name.trim()).map((s) => (
-                              <option key={s.id} value={s.name}>{s.name}</option>
-                            ))}
-                          </select>
-
-                          <select
-                            disabled={!istioDraft.entry.enabled || !istioDraft.entry.target?.serviceName}
-                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60 cursor-pointer"
-                            value={istioDraft.entry.target?.workloadName ?? ''}
-                            onChange={(e) => {
-                              const svcName = istioDraft.entry.target?.serviceName;
-                              const svc = formState.services.find((s) => s.name === svcName);
-                              const cnt = svc?.containers.find((c) => c.name === e.target.value) ?? svc?.containers[0];
-                              const port = cnt?.ports[0]?.port ?? 80;
-                              if (!svcName || !cnt) return;
-                              setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, target: { serviceName: svcName, workloadName: cnt.name, port } } }));
-                            }}
-                          >
-                            <option value="" disabled>Select workload</option>
-                            {(() => {
-                              const svcName = istioDraft.entry.target?.serviceName;
-                              const svc = formState.services.find((s) => s.name === svcName);
-                              return (svc?.containers ?? []).map((c) => (
-                                <option key={c.id} value={c.name}>{c.name}</option>
-                              ));
-                            })()}
-                          </select>
-
-                          <select
-                            disabled={!istioDraft.entry.enabled || !istioDraft.entry.target?.serviceName}
-                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60 cursor-pointer"
-                            value={istioDraft.entry.target?.port ?? ''}
-                            onChange={(e) => {
-                              const svcName = istioDraft.entry.target?.serviceName;
-                              const workloadName = istioDraft.entry.target?.workloadName;
-                              const port = Number(e.target.value);
-                              if (!svcName || !workloadName || !Number.isFinite(port)) return;
-                              setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, target: { serviceName: svcName, workloadName, port } } }));
-                            }}
-                          >
-                            <option value="" disabled>Select port</option>
-                            {(() => {
-                              const svcName = istioDraft.entry.target?.serviceName;
-                              const workloadName = istioDraft.entry.target?.workloadName;
-                              const svc = formState.services.find((s) => s.name === svcName);
-                              const cnt = svc?.containers.find((c) => c.name === workloadName);
-                              return (cnt?.ports ?? []).map((p, idx) => (
-                                <option key={idx} value={p.port}>{p.port}/{p.protocol}</option>
-                              ));
-                            })()}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div
-                    className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none border-t border-slate-200 dark:border-slate-700"
-                    onClick={() => setSecurityObsPreviewExpanded((v) => !v)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      {securityObsPreviewExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">Security & Observability</span>
-                    </div>
-                    <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
-                      {securityObsDraft.enableTelemetry || securityObsDraft.enablePeerAuthenticationStrict ? 'Configured' : 'Disabled'}
-                    </span>
-                  </div>
-
-                  {securityObsPreviewExpanded && (
-                    <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          checked={securityObsDraft.enableTelemetry}
-                          onChange={(e) => setSecurityObsDraft((prev) => ({ ...prev, enableTelemetry: e.target.checked }))}
-                        />
-                        <span className="text-sm text-slate-600 dark:text-slate-400">Enable Telemetry (YAML apply)</span>
-                      </label>
-
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          checked={securityObsDraft.enablePeerAuthenticationStrict}
-                          onChange={(e) => setSecurityObsDraft((prev) => ({ ...prev, enablePeerAuthenticationStrict: e.target.checked }))}
-                        />
-                        <span className="text-sm text-slate-600 dark:text-slate-400">Enable mTLS STRICT (PeerAuthentication)</span>
-                      </label>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
 
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100">Services</h3>
@@ -2033,6 +1831,218 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
             )}
 
             {step === 2 && (
+              <div className="space-y-6 max-w-2xl mx-auto">
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
+                  <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900">
+                    <label className="flex items-center space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        checked={enableMicroserviceGovernance}
+                        onChange={(e) => setEnableMicroserviceGovernance(e.target.checked)}
+                      />
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Enable Microservice Governance</span>
+                      <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                        {enableMicroserviceGovernance ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </label>
+                    <div className="text-xs text-slate-500 mt-1">开启后可配置 Istio Gateway、流量管理、安全策略与可观测性。</div>
+                  </div>
+
+                  {enableMicroserviceGovernance && (
+                    <>
+                      <div
+                        className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none border-t border-slate-200 dark:border-slate-700"
+                        onClick={() => setIstioEntryExpanded((v) => !v)}
+                      >
+                        <div className="flex items-center space-x-3">
+                          {istioEntryExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">Istio Entry (Gateway & Route)</span>
+                          <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                            {istioDraft.entry.enabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {istioEntryExpanded && (
+                        <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                          <div className="flex flex-wrap items-center gap-6">
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                checked={istioDraft.entry.enabled}
+                                onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, enabled: e.target.checked } }))}
+                              />
+                              <span className="text-sm text-slate-600 dark:text-slate-400">Enable Istio Entry</span>
+                            </label>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">Host / Domain</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. bookinfo.example.com"
+                                disabled={!istioDraft.entry.enabled}
+                                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-60"
+                                value={istioDraft.entry.host}
+                                onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, host: e.target.value } }))}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Gateway Namespace</label>
+                                <input
+                                  type="text"
+                                  disabled={!istioDraft.entry.enabled}
+                                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-60"
+                                  value={istioDraft.entry.gatewayRef.namespace}
+                                  onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, gatewayRef: { ...prev.entry.gatewayRef, namespace: e.target.value } } }))}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Gateway Name</label>
+                                <input
+                                  type="text"
+                                  disabled={!istioDraft.entry.enabled}
+                                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-60"
+                                  value={istioDraft.entry.gatewayRef.name}
+                                  onChange={(e) => setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, gatewayRef: { ...prev.entry.gatewayRef, name: e.target.value } } }))}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                            <div className="text-xs font-medium text-slate-500 mb-2">Target (Service / Workload / Port)</div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <select
+                                disabled={!istioDraft.entry.enabled}
+                                className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60 cursor-pointer"
+                                value={istioDraft.entry.target?.serviceName ?? ''}
+                                onChange={(e) => {
+                                  const nextSvcName = e.target.value;
+                                  const svc = formState.services.find((s) => s.name === nextSvcName);
+                                  const cnt = svc?.containers[0];
+                                  const port = cnt?.ports[0]?.port ?? 80;
+                                  setIstioDraft((prev) => ({
+                                    ...prev,
+                                    entry: {
+                                      ...prev.entry,
+                                      target: nextSvcName && cnt
+                                        ? { serviceName: nextSvcName, workloadName: cnt.name, port }
+                                        : null,
+                                    },
+                                  }));
+                                }}
+                              >
+                                <option value="" disabled>Select service</option>
+                                {formState.services.filter((s) => s.name.trim()).map((s) => (
+                                  <option key={s.id} value={s.name}>{s.name}</option>
+                                ))}
+                              </select>
+
+                              <select
+                                disabled={!istioDraft.entry.enabled || !istioDraft.entry.target?.serviceName}
+                                className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60 cursor-pointer"
+                                value={istioDraft.entry.target?.workloadName ?? ''}
+                                onChange={(e) => {
+                                  const svcName = istioDraft.entry.target?.serviceName;
+                                  const svc = formState.services.find((s) => s.name === svcName);
+                                  const cnt = svc?.containers.find((c) => c.name === e.target.value) ?? svc?.containers[0];
+                                  const port = cnt?.ports[0]?.port ?? 80;
+                                  if (!svcName || !cnt) return;
+                                  setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, target: { serviceName: svcName, workloadName: cnt.name, port } } }));
+                                }}
+                              >
+                                <option value="" disabled>Select workload</option>
+                                {(() => {
+                                  const svcName = istioDraft.entry.target?.serviceName;
+                                  const svc = formState.services.find((s) => s.name === svcName);
+                                  return (svc?.containers ?? []).map((c) => (
+                                    <option key={c.id} value={c.name}>{c.name}</option>
+                                  ));
+                                })()}
+                              </select>
+
+                              <select
+                                disabled={!istioDraft.entry.enabled || !istioDraft.entry.target?.serviceName}
+                                className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm disabled:opacity-60 cursor-pointer"
+                                value={istioDraft.entry.target?.port ?? ''}
+                                onChange={(e) => {
+                                  const svcName = istioDraft.entry.target?.serviceName;
+                                  const workloadName = istioDraft.entry.target?.workloadName;
+                                  const port = Number(e.target.value);
+                                  if (!svcName || !workloadName || !Number.isFinite(port)) return;
+                                  setIstioDraft((prev) => ({ ...prev, entry: { ...prev.entry, target: { serviceName: svcName, workloadName, port } } }));
+                                }}
+                              >
+                                <option value="" disabled>Select port</option>
+                                {(() => {
+                                  const svcName = istioDraft.entry.target?.serviceName;
+                                  const workloadName = istioDraft.entry.target?.workloadName;
+                                  const svc = formState.services.find((s) => s.name === svcName);
+                                  const cnt = svc?.containers.find((c) => c.name === workloadName);
+                                  return (cnt?.ports ?? []).map((p, idx) => (
+                                    <option key={idx} value={p.port}>{p.port}/{p.protocol}</option>
+                                  ));
+                                })()}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div
+                        className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none border-t border-slate-200 dark:border-slate-700"
+                        onClick={() => setSecurityObsPreviewExpanded((v) => !v)}
+                      >
+                        <div className="flex items-center space-x-3">
+                          {securityObsPreviewExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">Security & Observability</span>
+                        </div>
+                        <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                          {securityObsDraft.enableTelemetry || securityObsDraft.enablePeerAuthenticationStrict ? 'Configured' : 'Disabled'}
+                        </span>
+                      </div>
+
+                      {securityObsPreviewExpanded && (
+                        <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              checked={securityObsDraft.enableTelemetry}
+                              onChange={(e) => setSecurityObsDraft((prev) => ({ ...prev, enableTelemetry: e.target.checked }))}
+                            />
+                            <span className="text-sm text-slate-600 dark:text-slate-400">Enable Telemetry (YAML apply)</span>
+                          </label>
+
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              checked={securityObsDraft.enablePeerAuthenticationStrict}
+                              onChange={(e) => setSecurityObsDraft((prev) => ({ ...prev, enablePeerAuthenticationStrict: e.target.checked }))}
+                            />
+                            <span className="text-sm text-slate-600 dark:text-slate-400">Enable mTLS STRICT (PeerAuthentication)</span>
+                          </label>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {!enableMicroserviceGovernance && (
+                  <div className="text-center py-8 text-slate-500">
+                    <p className="text-sm">微服务治理未开启，可直接进入下一步。</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === 3 && (
               <div className="space-y-6">
                 <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                   <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">Summary</div>
