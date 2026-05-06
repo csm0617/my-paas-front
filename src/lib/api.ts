@@ -110,7 +110,7 @@ export interface ContainerSpec {
 export interface ApplicationService {
   name: string;
   description?: string;
-  exposureType?: 'internal' | 'entry' | '';
+  exposureType?: 'HTTP' | 'GRPC' | 'TCP' | '';
   replicas: number;
   maxReplicas: number;
   targetCpuUtilization?: number;

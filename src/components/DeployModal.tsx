@@ -61,7 +61,7 @@ interface ServiceState {
   id: string;
   name: string;
   description: string;
-  exposureType: 'internal' | 'entry' | '';
+  exposureType: 'HTTP' | 'GRPC' | 'TCP' | '';
   containers: ContainerState[];
   enableService: boolean;
   serviceType: 'ClusterIP' | 'NodePort';
@@ -146,8 +146,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
   });
 
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
-  const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
-  const [expandedSvcSections, setExpandedSvcSections] = useState<Record<string, Set<'networking' | 'workloads' | 'istio' | 'hpa' | 'mounts'>>>({});
+  const [expandedSvcSections, setExpandedSvcSections] = useState<Record<string, Set<'networking' | 'hpa' | 'mounts'>>>({});
   const [nodePortStatus, setNodePortStatus] = useState<Record<number, { checking: boolean, available: boolean | null }>>({});
   const [enableMicroserviceGovernance, setEnableMicroserviceGovernance] = useState(false);
   const [istioDraft, setIstioDraft] = useState<IstioDraft>({
@@ -199,7 +198,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
     setError(null);
     setNodePortStatus({});
     setExpandedServices(new Set());
-    setExpandedContainers(new Set());
     setExpandedSvcSections({});
     setIstioDraft({
       entry: {
@@ -331,18 +329,11 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
     });
   };
 
-  const toggleContainer = (id: string) => {
-    setExpandedContainers(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
-  const toggleServiceSection = (serviceId: string, section: 'networking' | 'workloads' | 'istio' | 'hpa' | 'mounts') => {
+
+  const toggleServiceSection = (serviceId: string, section: 'networking' | 'hpa' | 'mounts') => {
     setExpandedSvcSections((prev) => {
-      const current = prev[serviceId] ? new Set(prev[serviceId]) : new Set<'networking' | 'workloads' | 'istio' | 'hpa' | 'mounts'>(['workloads']);
+      const current = prev[serviceId] ? new Set(prev[serviceId]) : new Set<'networking' | 'hpa' | 'mounts'>(['hpa', 'mounts']);
       if (current.has(section)) current.delete(section);
       else current.add(section);
       return { ...prev, [serviceId]: current };
@@ -394,7 +385,9 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
         const normalizedIngressDomain = (s.ingressDomain ?? '').trim();
         return {
           name: s.name,
-          replicas: s.containers[0]?.replicas ?? 1, // Fallback for old mode if needed
+          description: s.description || undefined,
+          exposureType: s.exposureType || undefined,
+          replicas: s.containers[0]?.replicas ?? 1,
           maxReplicas: s.containers[0]?.maxReplicas ?? 1,
           targetCpuUtilization: s.containers[0]?.targetCpuUtilization,
           targetMemoryUtilization: s.containers[0]?.targetMemoryUtilization,
@@ -1026,10 +1019,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                         </div>
 
                         {isSvcExpanded && (() => {
-                          const sections = expandedSvcSections[svc.id] ?? new Set<'networking' | 'workloads' | 'istio'>(['networking', 'workloads']);
-                          const isNetworkingExpanded = sections.has('networking');
-                          const isWorkloadsExpanded = sections.has('workloads');
-                          const isIstioExpanded = sections.has('istio');
+                          const sections = expandedSvcSections[svc.id] ?? new Set<'networking' | 'hpa' | 'mounts'>(['hpa', 'mounts']);
 
                           const portKey = (p: PortSpecState) => `${p.protocol}:${p.port}`;
                           const allPorts = svc.containers.flatMap((c) => c.ports.map((p) => ({ ...p, _w: c.name })));
@@ -1069,27 +1059,37 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                               </div>
 
                               <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-2">Service Type</label>
+                                <label className="block text-xs font-medium text-slate-500 mb-2">Service Protocol</label>
                                 <div className="flex items-center gap-6">
                                   <label className="flex items-center space-x-2 cursor-pointer">
                                     <input
                                       type="radio"
                                       name={`exposureType-${svc.id}`}
                                       className="text-blue-600 focus:ring-blue-500"
-                                      checked={svc.exposureType === 'internal'}
-                                      onChange={() => updateService(sIdx, s => ({ ...s, exposureType: 'internal' }))}
+                                      checked={svc.exposureType === 'HTTP'}
+                                      onChange={() => updateService(sIdx, s => ({ ...s, exposureType: 'HTTP' }))}
                                     />
-                                    <span className="text-sm text-slate-600 dark:text-slate-400">Internal Service</span>
+                                    <span className="text-sm text-slate-600 dark:text-slate-400">HTTP</span>
                                   </label>
                                   <label className="flex items-center space-x-2 cursor-pointer">
                                     <input
                                       type="radio"
                                       name={`exposureType-${svc.id}`}
                                       className="text-blue-600 focus:ring-blue-500"
-                                      checked={svc.exposureType === 'entry'}
-                                      onChange={() => updateService(sIdx, s => ({ ...s, exposureType: 'entry' }))}
+                                      checked={svc.exposureType === 'GRPC'}
+                                      onChange={() => updateService(sIdx, s => ({ ...s, exposureType: 'GRPC' }))}
                                     />
-                                    <span className="text-sm text-slate-600 dark:text-slate-400">Entry Service</span>
+                                    <span className="text-sm text-slate-600 dark:text-slate-400">GRPC</span>
+                                  </label>
+                                  <label className="flex items-center space-x-2 cursor-pointer">
+                                    <input
+                                      type="radio"
+                                      name={`exposureType-${svc.id}`}
+                                      className="text-blue-600 focus:ring-blue-500"
+                                      checked={svc.exposureType === 'TCP'}
+                                      onChange={() => updateService(sIdx, s => ({ ...s, exposureType: 'TCP' }))}
+                                    />
+                                    <span className="text-sm text-slate-600 dark:text-slate-400">TCP</span>
                                   </label>
                                   {svc.exposureType && (
                                     <button
@@ -1103,74 +1103,13 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                 </div>
                               </div>
 
-                              <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                                <div
-                                  className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none"
-                                  onClick={() => toggleServiceSection(svc.id, 'workloads')}
-                                >
-                                  <div className="flex items-center space-x-2">
-                                    {isWorkloadsExpanded ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}
-                                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Workloads (K8s Deployment)</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      updateService(sIdx, s => ({ ...s, containers: [...s.containers, initialContainer()] }));
-                                    }}
-                                    className="text-xs flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium"
-                                    disabled={!!initialApp}
-                                  >
-                                    <Plus size={14} /> <span>Add Workload</span>
-                                  </button>
-                                </div>
-                                {isWorkloadsExpanded && (
-                                  <div className="p-3 border-t border-slate-200 dark:border-slate-700">
-                                    <div className="space-y-3">
-                                {svc.containers.map((cnt, cIdx) => {
-                                  const isCntExpanded = expandedContainers.has(cnt.id) || svc.containers.length === 1;
+                              <div className="space-y-3">
+                                {(() => {
+                                  const cnt = svc.containers[0];
+                                  const cIdx = 0;
                                   return (
-                                    <div key={cnt.id} className="border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 overflow-hidden">
-                                      <div 
-                                        className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900/50 cursor-pointer"
-                                        onClick={() => toggleContainer(cnt.id)}
-                                      >
-                                        <div className="flex items-center space-x-2">
-                                          {isCntExpanded ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}
-                                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{cnt.name || 'Unnamed'}</span>
-                                          <span className="text-xs text-slate-500 font-mono truncate max-w-[200px]">{cnt.image}</span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              updateService(sIdx, s => {
-                                                const nextContainers = s.containers.filter((_, i) => i !== cIdx);
-                                                const removedId = s.containers[cIdx]?.id;
-                                                const nextTarget = removedId && s.ingressTargetWorkloadId === removedId ? nextContainers[0]?.id : s.ingressTargetWorkloadId;
-                                                return { ...s, containers: nextContainers, ingressTargetWorkloadId: nextTarget };
-                                              });
-                                            }}
-                                            disabled={!!initialApp}
-                                            className={`p-1 rounded transition-colors ${initialApp ? 'text-slate-400 cursor-not-allowed' : 'text-red-500 hover:bg-red-100'}`}
-                                          >
-                                            <Trash2 size={14} />
-                                          </button>
-                                      </div>
-                                      
-                                      {isCntExpanded && (
-                                        <div className="p-3 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                                    <>
                                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                              <label className="block text-xs font-medium text-slate-500 mb-1">Name</label>
-                                              <input
-                                                type="text"
-                                                disabled={!!initialApp}
-                                                className={`w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-600 rounded outline-none text-sm ${initialApp ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500'}`}
-                                                value={cnt.name}
-                                                onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, name: e.target.value }))}
-                                              />
-                                            </div>
                                             <div>
                                               <label className="block text-xs font-medium text-slate-500 mb-1">Image</label>
                                               <input
@@ -1205,7 +1144,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                             </div>
                                           </div>
 
-                                          {/* Scaling / HPA */}
                                           <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                                             <div
                                               className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
@@ -1266,7 +1204,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                             )}
                                           </div>
 
-                                          {/* Ports */}
                                           <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">Ports</label>
                                             <div className="space-y-2">
@@ -1343,14 +1280,12 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                           </div>
 
                                           <div className="grid grid-cols-1 gap-4">
-                                            {/* Env */}
                                             <div>
                                               <label className="block text-xs font-medium text-slate-500 mb-1">Environment Variables</label>
                                               {renderKeyValueList(cnt.envList, (l) => updateContainer(sIdx, cIdx, c => ({ ...c, envList: l })))}
                                             </div>
                                           </div>
 
-                                          {/* Resources */}
                                           <div>
                                             <div className="flex items-center justify-between mb-2">
                                               <label className="text-xs font-medium text-slate-500">Resources (CPU / Memory)</label>
@@ -1401,7 +1336,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                             </div>
                                           </div>
 
-                                          {/* Mounts */}
                                           <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                                             <div
                                               className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
@@ -1428,7 +1362,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                             )}
                                           </div>
 
-                                          {/* Scheduling */}
                                           <div className="bg-slate-50 dark:bg-slate-900/30 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
                                             <div className="flex items-center justify-between mb-4">
                                               <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
@@ -1459,7 +1392,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
 
                                             {cnt.schedulingMode === 'simple' ? (
                                               <div className="space-y-3">
-                                                {/* Any Node */}
                                                 <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${cnt.simpleStrategy === 'any' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
                                                   <input type="radio" name={`strategy-${sIdx}-${cIdx}`} className="mt-1" checked={cnt.simpleStrategy === 'any'} onChange={() => updateContainer(sIdx, cIdx, c => ({ ...c, simpleStrategy: 'any' }))} />
                                                   <div className="ml-3">
@@ -1468,7 +1400,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                                   </div>
                                                 </label>
 
-                                                {/* Fixed Node */}
                                                 <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${cnt.simpleStrategy === 'fixed' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
                                                   <input type="radio" name={`strategy-${sIdx}-${cIdx}`} className="mt-1" checked={cnt.simpleStrategy === 'fixed'} onChange={() => updateContainer(sIdx, cIdx, c => ({ ...c, simpleStrategy: 'fixed' }))} />
                                                   <div className="ml-3 w-full pr-4">
@@ -1501,7 +1432,6 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                                   </div>
                                                 </label>
 
-                                                {/* High Availability */}
                                                 <label className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${cnt.simpleStrategy === 'ha' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'}`}>
                                                   <input type="radio" name={`strategy-${sIdx}-${cIdx}`} className="mt-1" checked={cnt.simpleStrategy === 'ha'} onChange={() => updateContainer(sIdx, cIdx, c => ({ ...c, simpleStrategy: 'ha' }))} />
                                                   <div className="ml-3">
@@ -1521,200 +1451,12 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                               />
                                             )}
                                           </div>
-                                        </div>
-                                      )}
-                                    </div>
+                                    </>
                                   );
-                                })}
-                                    </div>
-                                  </div>
-                                )}
+                                })()}
                               </div>
 
-                              <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                                <div
-                                  className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none"
-                                  onClick={() => toggleServiceSection(svc.id, 'istio')}
-                                >
-                                  <div className="flex items-center space-x-2">
-                                    {isIstioExpanded ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}
-                                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Istio (Traffic & Policy)</span>
-                                  </div>
-                                </div>
-                                {isIstioExpanded && (
-                                  <div className="p-3 border-t border-slate-200 dark:border-slate-700 space-y-4">
-                                    {(() => {
-                                      const svcKey = svc.name.trim();
-                                      const inferredSubsets = svc.containers
-                                        .map((c) => c.name.trim())
-                                        .filter(Boolean)
-                                        .map((name) => ({ name, labels: { version: name } }));
 
-                                      const current = (svcKey && istioDraft.services[svcKey]) ? istioDraft.services[svcKey] : undefined;
-                                      const enabled = Boolean(current?.enabled);
-                                      const subsets = current?.subsets?.length ? current.subsets : inferredSubsets;
-                                      const weights: Record<string, number> = (current?.trafficSplit?.weights as Record<string, number> | undefined)
-                                        ?? (Object.fromEntries(subsets.map((s) => [s.name, Math.floor(100 / Math.max(1, subsets.length))])) as Record<string, number>);
-                                      const sum = Object.values(weights).reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0 as number);
-
-                                      const setServiceDraft = (patcher: (prevDraft: NonNullable<typeof current>) => NonNullable<typeof current>) => {
-                                        if (!svcKey) return;
-                                        setIstioDraft((prev) => {
-                                          const prevSvc = prev.services[svcKey] ?? {
-                                            enabled: false,
-                                            subsets,
-                                            trafficSplit: { enabled: false, weights: Object.fromEntries(subsets.map((s) => [s.name, 0])) },
-                                            resilience: { timeout: '2s', retriesAttempts: 2, perTryTimeout: '1s' },
-                                          };
-                                          return { ...prev, services: { ...prev.services, [svcKey]: patcher(prevSvc) } };
-                                        });
-                                      };
-
-                                      return (
-                                        <>
-                                          <div className="flex items-center justify-between">
-                                            <label className="flex items-center space-x-2 cursor-pointer">
-                                              <input
-                                                type="checkbox"
-                                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                checked={enabled}
-                                                disabled={!svcKey}
-                                                onChange={(e) => {
-                                                  const nextEnabled = e.target.checked;
-                                                  if (!svcKey) return;
-                                                  setIstioDraft((prev) => {
-                                                    const prevSvc = prev.services[svcKey] ?? {
-                                                      enabled: false,
-                                                      subsets,
-                                                      trafficSplit: { enabled: false, weights: Object.fromEntries(subsets.map((s) => [s.name, 0])) },
-                                                      resilience: { timeout: '2s', retriesAttempts: 2, perTryTimeout: '1s' },
-                                                    };
-                                                    return { ...prev, services: { ...prev.services, [svcKey]: { ...prevSvc, enabled: nextEnabled, subsets } } };
-                                                  });
-                                                }}
-                                              />
-                                              <span className="text-sm text-slate-700 dark:text-slate-300">Enable Istio for this Service</span>
-                                            </label>
-                                            <span className="text-xs text-slate-400">YAML only</span>
-                                          </div>
-
-                                          {enabled && (
-                                            <div className="space-y-4">
-                                              <div>
-                                                <div className="text-xs font-medium text-slate-500 mb-2">Subsets (by Workload)</div>
-                                                <div className="space-y-2">
-                                                  {subsets.map((s) => (
-                                                    <div key={s.name} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                      <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-sm font-mono">
-                                                        {s.name}
-                                                      </div>
-                                                      <input
-                                                        type="text"
-                                                        className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm font-mono"
-                                                        value={s.labels.version ?? s.name}
-                                                        onChange={(e) => {
-                                                          const v = e.target.value;
-                                                          setServiceDraft((prevSvc) => ({
-                                                            ...prevSvc,
-                                                            subsets: (prevSvc.subsets?.length ? prevSvc.subsets : subsets).map((it) => it.name === s.name ? ({ ...it, labels: { ...it.labels, version: v } }) : it),
-                                                          }));
-                                                        }}
-                                                        placeholder="version label value"
-                                                      />
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              </div>
-
-                                              <div className="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                  <label className="flex items-center space-x-2 cursor-pointer">
-                                                    <input
-                                                      type="checkbox"
-                                                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                      checked={Boolean(current?.trafficSplit?.enabled)}
-                                                      disabled={subsets.length < 2}
-                                                      onChange={(e) => {
-                                                        const nextEnabled = e.target.checked;
-                                                        setServiceDraft((prevSvc) => ({
-                                                          ...prevSvc,
-                                                          trafficSplit: {
-                                                            enabled: nextEnabled,
-                                                            weights: prevSvc.trafficSplit?.weights ?? Object.fromEntries(subsets.map((s) => [s.name, 0])),
-                                                          },
-                                                        }));
-                                                      }}
-                                                    />
-                                                    <span className={`text-sm ${subsets.length < 2 ? 'text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}>Traffic Split</span>
-                                                  </label>
-                                                  {Boolean(current?.trafficSplit?.enabled) && (
-                                                    <span className={`text-xs ${sum === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>Weights sum: {sum}</span>
-                                                  )}
-                                                </div>
-
-                                                {Boolean(current?.trafficSplit?.enabled) && (
-                                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                    {subsets.map((s) => (
-                                                      <div key={s.name} className="flex items-center gap-2">
-                                                        <span className="text-xs font-mono w-20 truncate">{s.name}</span>
-                                                        <input
-                                                          type="number"
-                                                          min={0}
-                                                          max={100}
-                                                          className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm"
-                                                          value={weights[s.name] ?? 0}
-                                                          onChange={(e) => {
-                                                            const next = Number(e.target.value);
-                                                            setServiceDraft((prevSvc) => ({
-                                                              ...prevSvc,
-                                                              trafficSplit: {
-                                                                enabled: true,
-                                                                weights: { ...(prevSvc.trafficSplit?.weights ?? {}), [s.name]: Number.isFinite(next) ? next : 0 },
-                                                              },
-                                                            }));
-                                                          }}
-                                                        />
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                )}
-                                              </div>
-
-                                              <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
-                                                <div className="text-xs font-medium text-slate-500 mb-2">Resilience</div>
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                  <input
-                                                    type="text"
-                                                    className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm font-mono"
-                                                    value={current?.resilience?.timeout ?? '2s'}
-                                                    onChange={(e) => setServiceDraft((prevSvc) => ({ ...prevSvc, resilience: { ...prevSvc.resilience, timeout: e.target.value } }))}
-                                                    placeholder="timeout (e.g. 2s)"
-                                                  />
-                                                  <input
-                                                    type="number"
-                                                    min={0}
-                                                    className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm"
-                                                    value={current?.resilience?.retriesAttempts ?? 2}
-                                                    onChange={(e) => setServiceDraft((prevSvc) => ({ ...prevSvc, resilience: { ...prevSvc.resilience, retriesAttempts: Number(e.target.value) } }))}
-                                                    placeholder="retries attempts"
-                                                  />
-                                                  <input
-                                                    type="text"
-                                                    className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-sm font-mono"
-                                                    value={current?.resilience?.perTryTimeout ?? '1s'}
-                                                    onChange={(e) => setServiceDraft((prevSvc) => ({ ...prevSvc, resilience: { ...prevSvc.resilience, perTryTimeout: e.target.value } }))}
-                                                    placeholder="perTryTimeout (e.g. 1s)"
-                                                  />
-                                                </div>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </>
-                                      );
-                                    })()}
-                                  </div>
-                                )}
-                              </div>
                             </div>
                           );
                         })()}
@@ -1959,9 +1701,19 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                       {commandPreview.services.map((svc, i) => (
                         <div key={i} className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm">
                           <div className="flex justify-between font-medium mb-2">
-                            <span>{svc.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span>{svc.name}</span>
+                              {svc.exposureType && (
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                                  {svc.exposureType}
+                                </span>
+                              )}
+                            </div>
                             <span>{svc.replicas} / {svc.maxReplicas} Replicas</span>
                           </div>
+                          {svc.description && (
+                            <div className="text-slate-500 text-xs mb-1">{svc.description}</div>
+                          )}
                           <div className="text-slate-500 text-xs mb-2">
                             {svc.enableIngress ? `Ingress: ${svc.ingressDomain}` : 'No Ingress'}
                           </div>
