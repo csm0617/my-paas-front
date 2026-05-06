@@ -898,7 +898,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
           {steps.map((label, i) => {
             if (initialApp && i === 0) return null; // 隐藏步骤 1：App Info
             const displayIndex = initialApp ? i : i + 1;
-            const displayLabel = label === 'Services & Containers' ? 'Services & Workloads' : label;
+            const displayLabel = label === 'Services & Containers' ? '微服务' : label;
             return (
               <div key={label} className="flex items-center flex-1 min-w-0">
                     <div className="flex flex-col items-center min-w-0 w-full">
@@ -1070,14 +1070,14 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100">Services</h3>
+                  <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100">微服务</h3>
                   <button
                     type="button"
                     onClick={() => setFormState(prev => ({ ...prev, services: [...prev.services, initialService()] }))}
                     disabled={!!initialApp}
                     className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium ${initialApp ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
                   >
-                    <Plus size={16} /> <span>Add Service</span>
+                    <Plus size={16} /> <span>添加微服务</span>
                   </button>
                 </div>
 
