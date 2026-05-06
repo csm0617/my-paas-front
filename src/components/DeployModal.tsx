@@ -60,6 +60,8 @@ interface ContainerState {
 interface ServiceState {
   id: string;
   name: string;
+  description: string;
+  exposureType: 'internal' | 'entry' | '';
   containers: ContainerState[];
   enableService: boolean;
   serviceType: 'ClusterIP' | 'NodePort';
@@ -112,6 +114,8 @@ const initialContainer = (): ContainerState => ({
 const initialService = (): ServiceState => ({
   id: generateId(),
   name: 'web',
+  description: '',
+  exposureType: '',
   containers: [initialContainer()],
   enableService: true,
   serviceType: 'ClusterIP',
@@ -273,6 +277,8 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
           services: [{
             id: generateId(),
             name: svc.name,
+            description: svc.description || '',
+            exposureType: svc.exposureType || '',
             containers,
             enableService,
             serviceType,
@@ -1049,6 +1055,51 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                     value={svc.name}
                                     onChange={(e) => updateService(sIdx, s => ({ ...s, name: e.target.value }))}
                                   />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-slate-500 mb-1">Service Description</label>
+                                  <input
+                                    type="text"
+                                    placeholder="Brief description of this service"
+                                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                    value={svc.description}
+                                    onChange={(e) => updateService(sIdx, s => ({ ...s, description: e.target.value }))}
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-2">Service Type</label>
+                                <div className="flex items-center gap-6">
+                                  <label className="flex items-center space-x-2 cursor-pointer">
+                                    <input
+                                      type="radio"
+                                      name={`exposureType-${svc.id}`}
+                                      className="text-blue-600 focus:ring-blue-500"
+                                      checked={svc.exposureType === 'internal'}
+                                      onChange={() => updateService(sIdx, s => ({ ...s, exposureType: 'internal' }))}
+                                    />
+                                    <span className="text-sm text-slate-600 dark:text-slate-400">Internal Service</span>
+                                  </label>
+                                  <label className="flex items-center space-x-2 cursor-pointer">
+                                    <input
+                                      type="radio"
+                                      name={`exposureType-${svc.id}`}
+                                      className="text-blue-600 focus:ring-blue-500"
+                                      checked={svc.exposureType === 'entry'}
+                                      onChange={() => updateService(sIdx, s => ({ ...s, exposureType: 'entry' }))}
+                                    />
+                                    <span className="text-sm text-slate-600 dark:text-slate-400">Entry Service</span>
+                                  </label>
+                                  {svc.exposureType && (
+                                    <button
+                                      type="button"
+                                      className="text-xs text-slate-400 hover:text-slate-600"
+                                      onClick={() => updateService(sIdx, s => ({ ...s, exposureType: '' }))}
+                                    >
+                                      Clear
+                                    </button>
+                                  )}
                                 </div>
                               </div>
 

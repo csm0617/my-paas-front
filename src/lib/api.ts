@@ -109,6 +109,8 @@ export interface ContainerSpec {
 
 export interface ApplicationService {
   name: string;
+  description?: string;
+  exposureType?: 'internal' | 'entry' | '';
   replicas: number;
   maxReplicas: number;
   targetCpuUtilization?: number;
