@@ -145,6 +145,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
   const [expandedSvcSections, setExpandedSvcSections] = useState<Record<string, Set<'networking' | 'workloads' | 'istio'>>>({});
   const [nodePortStatus, setNodePortStatus] = useState<Record<number, { checking: boolean, available: boolean | null }>>({});
+  const [enableMicroserviceGovernance, setEnableMicroserviceGovernance] = useState(false);
   const [istioDraft, setIstioDraft] = useState<IstioDraft>({
     entry: {
       enabled: false,
@@ -548,17 +549,19 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
         }
       }
 
-      if (istioDraft.entry.enabled) {
-        if (!istioDraft.entry.host?.trim()) return '启用 Istio Entry 时必须填写 Host/Domain';
-        if (!istioDraft.entry.target) return '启用 Istio Entry 时必须选择 Target';
-        if (!Number.isFinite(istioDraft.entry.target.port) || istioDraft.entry.target.port < 1) return 'Istio Entry Target Port 不合法';
-      }
+      if (enableMicroserviceGovernance) {
+        if (istioDraft.entry.enabled) {
+          if (!istioDraft.entry.host?.trim()) return '启用 Istio Entry 时必须填写 Host/Domain';
+          if (!istioDraft.entry.target) return '启用 Istio Entry 时必须选择 Target';
+          if (!Number.isFinite(istioDraft.entry.target.port) || istioDraft.entry.target.port < 1) return 'Istio Entry Target Port 不合法';
+        }
 
-      for (const [svcName, draft] of Object.entries(istioDraft.services)) {
-        if (!draft?.enabled) continue;
-        if (draft.trafficSplit?.enabled) {
-          const sum = Object.values(draft.trafficSplit.weights || {}).reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
-          if (sum !== 100) return `Service ${svcName} 的 Traffic Split 权重总和必须为 100（当前为 ${sum}）`;
+        for (const [svcName, draft] of Object.entries(istioDraft.services)) {
+          if (!draft?.enabled) continue;
+          if (draft.trafficSplit?.enabled) {
+            const sum = Object.values(draft.trafficSplit.weights || {}).reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+            if (sum !== 100) return `Service ${svcName} 的 Traffic Split 权重总和必须为 100（当前为 ${sum}）`;
+          }
         }
       }
     }
@@ -999,26 +1002,30 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                         title: '1) Deploy Workloads',
                         action: applyStageWorkloads,
                         disabled: false,
+                        alwaysShow: true,
                       },
                       {
                         key: 'exposure' as const,
                         title: '2) Apply Service Exposure',
                         action: applyStageExposure,
                         disabled: releaseStages.workloads.state !== 'success',
+                        alwaysShow: true,
                       },
                       {
                         key: 'istioTraffic' as const,
                         title: '3) Apply Istio Traffic',
                         action: applyStageIstioTraffic,
                         disabled: releaseStages.workloads.state !== 'success',
+                        alwaysShow: enableMicroserviceGovernance,
                       },
                       {
                         key: 'securityObs' as const,
                         title: '4) Apply Security & Observability',
                         action: applyStageSecurityObs,
                         disabled: releaseStages.workloads.state !== 'success',
+                        alwaysShow: enableMicroserviceGovernance,
                       },
-                    ] as const).map((s) => {
+                    ] as const).filter(s => s.alwaysShow).map((s) => {
                       const status = releaseStages[s.key];
                       const badge =
                         status.state === 'success'
@@ -1063,18 +1070,36 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                 </div>
 
                 <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
-                  <div
-                    className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
-                    onClick={() => setIstioEntryExpanded((v) => !v)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      {istioEntryExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">Istio Entry (Gateway & Route)</span>
+                  <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900">
+                    <label className="flex items-center space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        checked={enableMicroserviceGovernance}
+                        onChange={(e) => setEnableMicroserviceGovernance(e.target.checked)}
+                      />
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Enable Microservice Governance</span>
                       <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
-                        {istioDraft.entry.enabled ? 'Enabled' : 'Disabled'}
+                        {enableMicroserviceGovernance ? 'Enabled' : 'Disabled'}
                       </span>
-                    </div>
+                    </label>
+                    <div className="text-xs text-slate-500 mt-1">Enable Istio Gateway, Traffic Management, Security and Observability features.</div>
                   </div>
+
+                  {enableMicroserviceGovernance && (
+                    <>
+                      <div
+                        className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none border-t border-slate-200 dark:border-slate-700"
+                        onClick={() => setIstioEntryExpanded((v) => !v)}
+                      >
+                        <div className="flex items-center space-x-3">
+                          {istioEntryExpanded ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">Istio Entry (Gateway & Route)</span>
+                          <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                            {istioDraft.entry.enabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </div>
+                      </div>
 
                   {istioEntryExpanded && (
                     <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
@@ -1205,11 +1230,9 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                       </div>
                     </div>
                   )}
-                </div>
 
-                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800">
                   <div
-                    className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
+                    className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/50 cursor-pointer select-none border-t border-slate-200 dark:border-slate-700"
                     onClick={() => setSecurityObsPreviewExpanded((v) => !v)}
                   >
                     <div className="flex items-center space-x-3">
@@ -1244,7 +1267,9 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                       </label>
                     </div>
                   )}
-                </div>
+                </>
+              )}
+            </div>
 
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100">Services</h3>
