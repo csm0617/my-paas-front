@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layers, Rocket, Activity, Server, FolderTree, Package, Box, Share2, Link as LinkIcon, FileCode, Settings, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { Layers, Globe, Activity, Server, FolderTree, Package, Box, Share2, Link as LinkIcon, FileCode, Settings, ChevronLeft, ChevronRight, ChevronDown, Rocket } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -35,7 +35,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 overflow-y-auto mt-6 px-4 space-y-2 pb-6 overflow-x-hidden">
           <Link
             to="/"
-            title={isSidebarCollapsed ? "Applications" : ""}
+            title={isSidebarCollapsed ? "应用" : ""}
             className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
               location.pathname === '/'
                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
@@ -43,23 +43,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             }`}
           >
             <Layers size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Applications</span>}
-          </Link>
-          <Link
-            to="/releases"
-            title={isSidebarCollapsed ? "Releases" : ""}
-            className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
-              location.pathname === '/releases'
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
-                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            <Rocket size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Releases</span>}
+            {!isSidebarCollapsed && <span className="truncate">应用</span>}
           </Link>
           <Link
             to="/monitoring"
-            title={isSidebarCollapsed ? "Monitoring" : ""}
+            title={isSidebarCollapsed ? "监控" : ""}
             className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
               location.pathname === '/monitoring'
                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
@@ -67,7 +55,31 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             }`}
           >
             <Activity size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Monitoring</span>}
+            {!isSidebarCollapsed && <span className="truncate">监控</span>}
+          </Link>
+          <Link
+            to="/entries"
+            title={isSidebarCollapsed ? "入口" : ""}
+            className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
+              location.pathname === '/entries'
+                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
+                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            <Globe size={20} className="shrink-0" />
+            {!isSidebarCollapsed && <span className="truncate">入口</span>}
+          </Link>
+          <Link
+            to="/settings"
+            title={isSidebarCollapsed ? "设置" : ""}
+            className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
+              location.pathname === '/settings'
+                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
+                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            <Settings size={20} className="shrink-0" />
+            {!isSidebarCollapsed && <span className="truncate">设置</span>}
           </Link>
           <div className="border-t border-slate-200 dark:border-slate-700 my-2" />
           <button
@@ -175,18 +187,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           )}
-          <Link
-            to="/settings"
-            title={isSidebarCollapsed ? "Settings" : ""}
-            className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
-              location.pathname === '/settings'
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
-                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            <Settings size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Settings</span>}
-          </Link>
         </nav>
       </aside>
 
@@ -194,7 +194,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center px-8 shadow-sm z-10">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
-            {location.pathname === '/' ? 'Applications' : location.pathname === '/releases' ? 'Releases' : location.pathname === '/monitoring' ? 'Monitoring' : location.pathname === '/nodes' ? 'Node Management' : location.pathname === '/namespaces' ? 'Namespace Management' : location.pathname === '/deployments' ? 'Workload Management' : location.pathname === '/pods' ? 'Instance Management' : location.pathname === '/services' ? 'Endpoint Management' : location.pathname === '/ingresses' ? 'Route Management' : location.pathname === '/configmaps' ? 'Config Group Management' : 'Settings'}
+            {location.pathname === '/' ? '应用' : location.pathname === '/monitoring' ? '监控' : location.pathname === '/entries' ? '入口' : location.pathname === '/settings' ? '设置' : location.pathname === '/nodes' ? 'Node Management' : location.pathname === '/namespaces' ? 'Namespace Management' : location.pathname === '/deployments' ? 'Workload Management' : location.pathname === '/pods' ? 'Instance Management' : location.pathname === '/services' ? 'Endpoint Management' : location.pathname === '/ingresses' ? 'Route Management' : location.pathname === '/configmaps' ? 'Config Group Management' : ''}
           </h2>
         </header>
         <div className="flex-1 overflow-auto p-8">

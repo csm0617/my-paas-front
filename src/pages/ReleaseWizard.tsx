@@ -14,8 +14,8 @@ interface WizardState {
   limitsCpu: string;
   limitsMemory: string;
   resourcePreset: string;
-  releaseMode: 'rolling' | 'canary';
-  canaryWeight: number;
+  maxUnavailable: number;
+  maxSurge: number;
 }
 
 export default function ReleaseWizard() {
@@ -27,7 +27,7 @@ export default function ReleaseWizard() {
   const [submitting, setSubmitting] = useState(false);
 
   const stableRevision = useMemo(() => {
-    return svc?.revisions?.find(r => r.status === 'Stable');
+    return svc?.revisions?.find(r => r.status === 'Running');
   }, [svc]);
 
   const nextVersionName = useMemo(() => {
@@ -48,8 +48,8 @@ export default function ReleaseWizard() {
     limitsCpu: '',
     limitsMemory: '',
     resourcePreset: '',
-    releaseMode: 'canary',
-    canaryWeight: 10,
+    maxUnavailable: 1,
+    maxSurge: 1,
   });
 
   useEffect(() => {
@@ -99,8 +99,9 @@ export default function ReleaseWizard() {
         revisionName: form.revisionName,
         image: form.image,
         replicas: form.replicas,
-        mode: form.releaseMode,
-        canaryWeight: form.releaseMode === 'canary' ? form.canaryWeight : undefined,
+        mode: 'rolling',
+        maxUnavailable: form.maxUnavailable,
+        maxSurge: form.maxSurge,
         imagePullPolicy: form.imagePullPolicy,
         requestsCpu: form.requestsCpu || undefined,
         requestsMemory: form.requestsMemory || undefined,
@@ -125,8 +126,6 @@ export default function ReleaseWizard() {
       </div>
     );
   }
-
-  const canaryStableWeight = form.releaseMode === 'canary' ? 100 - form.canaryWeight : 0;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -285,66 +284,36 @@ export default function ReleaseWizard() {
           <div className="space-y-5">
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-3">Release Mode</label>
-              <div className="grid grid-cols-2 gap-4">
-                <label className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
-                  form.releaseMode === 'rolling' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'
-                }`}>
-                  <input type="radio" className="mt-1" checked={form.releaseMode === 'rolling'} onChange={() => updateForm({ releaseMode: 'rolling' })} />
-                  <div className="ml-3">
-                    <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Rolling Update</div>
-                    <div className="text-xs text-slate-500 mt-0.5">Replace all instances gradually. Zero downtime.</div>
-                  </div>
-                </label>
-                <label className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
-                  form.releaseMode === 'canary' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-white border-slate-200 hover:border-blue-300 dark:bg-slate-800 dark:border-slate-700'
-                }`}>
-                  <input type="radio" className="mt-1" checked={form.releaseMode === 'canary'} onChange={() => updateForm({ releaseMode: 'canary' })} />
-                  <div className="ml-3">
-                    <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Canary Release</div>
-                    <div className="text-xs text-slate-500 mt-0.5">Route a percentage of traffic to the new version first.</div>
-                  </div>
-                </label>
+              <div className="p-4 border rounded-lg bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800">
+                <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Rolling Update</div>
+                <div className="text-xs text-slate-500 mt-0.5">Replace all instances gradually. Zero downtime.</div>
               </div>
             </div>
 
-            {form.releaseMode === 'canary' && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-2">Canary Traffic Weight</label>
-                  <div className="flex items-center space-x-4">
-                    <input
-                      type="range"
-                      min="1"
-                      max="50"
-                      value={form.canaryWeight}
-                      onChange={(e) => updateForm({ canaryWeight: Number(e.target.value) })}
-                      className="flex-1"
-                    />
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-12 text-right">{form.canaryWeight}%</span>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg p-4">
-                  <h4 className="text-xs font-medium text-slate-500 mb-3">Traffic Distribution</h4>
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-3">
-                      <span className="text-sm font-mono text-slate-700 dark:text-slate-300 w-16">{stableRevision?.name || 'v1'}</span>
-                      <div className="flex-1 bg-slate-200 dark:bg-slate-700 rounded-full h-6 overflow-hidden">
-                        <div className="h-full rounded-full bg-blue-500 transition-all duration-300" style={{ width: `${canaryStableWeight}%` }} />
-                      </div>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-12 text-right">{canaryStableWeight}%</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <span className="text-sm font-mono text-amber-600 dark:text-amber-400 w-16">{form.revisionName}</span>
-                      <div className="flex-1 bg-slate-200 dark:bg-slate-700 rounded-full h-6 overflow-hidden">
-                        <div className="h-full rounded-full bg-amber-500 transition-all duration-300" style={{ width: `${form.canaryWeight}%` }} />
-                      </div>
-                      <span className="text-sm font-medium text-amber-600 dark:text-amber-400 w-12 text-right">{form.canaryWeight}%</span>
-                    </div>
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">maxUnavailable</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  value={form.maxUnavailable}
+                  onChange={(e) => updateForm({ maxUnavailable: Number(e.target.value) })}
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Maximum number of unavailable pods during update</p>
               </div>
-            )}
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">maxSurge</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  value={form.maxSurge}
+                  onChange={(e) => updateForm({ maxSurge: Number(e.target.value) })}
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Maximum number of extra pods created during update</p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -370,14 +339,16 @@ export default function ReleaseWizard() {
               </div>
               <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3">
                 <div className="text-xs text-slate-500 mb-1">Release Mode</div>
-                <div className="font-medium text-slate-800 dark:text-slate-200 capitalize">{form.releaseMode}</div>
+                <div className="font-medium text-slate-800 dark:text-slate-200">Rolling Update</div>
               </div>
-              {form.releaseMode === 'canary' && (
-                <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3">
-                  <div className="text-xs text-slate-500 mb-1">Canary Weight</div>
-                  <div className="font-medium text-amber-600">{form.canaryWeight}%</div>
-                </div>
-              )}
+              <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3">
+                <div className="text-xs text-slate-500 mb-1">maxUnavailable</div>
+                <div className="font-medium text-slate-800 dark:text-slate-200">{form.maxUnavailable}</div>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3">
+                <div className="text-xs text-slate-500 mb-1">maxSurge</div>
+                <div className="font-medium text-slate-800 dark:text-slate-200">{form.maxSurge}</div>
+              </div>
               <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3">
                 <div className="text-xs text-slate-500 mb-1">Based On</div>
                 <div className="font-medium text-slate-800 dark:text-slate-200">{stableRevision?.name || 'N/A'}</div>

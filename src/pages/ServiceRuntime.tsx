@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store/appStore';
 import { Application, ApplicationService, Revision } from '@/lib/api';
-import { ArrowLeft, Rocket, RotateCcw, CheckCircle2, AlertCircle, XCircle, Clock, TrendingUp, AlertTriangle, Timer } from 'lucide-react';
+import { ArrowLeft, Rocket, RotateCcw, CheckCircle2, AlertCircle, XCircle, Clock, TrendingUp, AlertTriangle, Timer, Cpu, HardDrive, ChevronDown, ChevronRight, FileText } from 'lucide-react';
 
 export default function ServiceRuntime() {
   const { appName, serviceName } = useParams<{ appName: string; serviceName: string }>();
@@ -10,6 +10,16 @@ export default function ServiceRuntime() {
   const { deployments, fetchDeployments, namespace } = useAppStore();
   const [app, setApp] = useState<Application | null>(null);
   const [svc, setSvc] = useState<ApplicationService | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [expandedYaml, setExpandedYaml] = useState<Record<string, boolean>>({});
+
+  const toggleSection = (key: string) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleYaml = (key: string) => {
+    setExpandedYaml(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   useEffect(() => {
     fetchDeployments();
@@ -35,8 +45,10 @@ export default function ServiceRuntime() {
 
   const getRevisionStatusBadge = (status: string) => {
     switch (status) {
-      case 'Stable':
-        return <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">Stable</span>;
+      case 'Running':
+        return <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">Running</span>;
+      case 'Ready':
+        return <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400">Ready</span>;
       case 'Canary':
         return <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Canary</span>;
       case 'Pending':
@@ -61,7 +73,7 @@ export default function ServiceRuntime() {
 
   const revisions = svc.revisions || [];
   const activeRevisions = revisions.filter(r => r.status !== 'Offline');
-  const stableRevision = revisions.find(r => r.status === 'Stable');
+  const stableRevision = revisions.find(r => r.status === 'Running');
   const canaryRevisions = revisions.filter(r => r.status === 'Canary');
 
   return (
@@ -91,7 +103,7 @@ export default function ServiceRuntime() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
           <div className="flex items-center space-x-2 mb-2">
             <TrendingUp size={16} className="text-blue-500" />
@@ -110,6 +122,20 @@ export default function ServiceRuntime() {
           <div className="flex items-center space-x-2 mb-2">
             <Timer size={16} className="text-purple-500" />
             <span className="text-xs font-medium text-slate-500">Latency P99</span>
+          </div>
+          <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">--</div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
+          <div className="flex items-center space-x-2 mb-2">
+            <Cpu size={16} className="text-cyan-500" />
+            <span className="text-xs font-medium text-slate-500">CPU</span>
+          </div>
+          <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">--</div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
+          <div className="flex items-center space-x-2 mb-2">
+            <HardDrive size={16} className="text-rose-500" />
+            <span className="text-xs font-medium text-slate-500">Memory</span>
           </div>
           <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">--</div>
         </div>
@@ -187,7 +213,7 @@ export default function ServiceRuntime() {
                         <button className="text-xs text-red-600 hover:text-red-700 font-medium">Offline</button>
                       </div>
                     )}
-                    {rev.status === 'Stable' && canaryRevisions.length > 0 && (
+                    {rev.status === 'Running' && canaryRevisions.length > 0 && (
                       <span className="text-xs text-slate-400">Receiving traffic</span>
                     )}
                   </td>
@@ -200,6 +226,67 @@ export default function ServiceRuntime() {
             No revisions found. This service may have been created before the Revision model was introduced.
           </div>
         )}
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Advanced Settings</h3>
+        </div>
+        <div className="divide-y divide-slate-100 dark:divide-slate-700">
+          {[
+            { key: 'hpa', title: 'Auto Scaling (HPA)', placeholder: 'Horizontal Pod Autoscaler configuration. Configure min/max replicas and resource thresholds for automatic scaling.' },
+            { key: 'scheduling', title: 'Scheduling', placeholder: 'Pod scheduling policies including node affinity, anti-affinity, tolerations, and topology spread constraints.' },
+            { key: 'healthcheck', title: 'Health Check', placeholder: 'Liveness probe, readiness probe, and startup probe configurations for container health monitoring.' },
+          ].map(section => (
+            <div key={section.key}>
+              <button
+                onClick={() => toggleSection(section.key)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
+              >
+                <span className="font-medium">{section.title}</span>
+                {expandedSections[section.key] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+              {expandedSections[section.key] && (
+                <div className="px-4 pb-4 text-sm text-slate-500 dark:text-slate-400">
+                  {section.placeholder}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Expert Mode</h3>
+        </div>
+        <div className="divide-y divide-slate-100 dark:divide-slate-700">
+          {[
+            { key: 'deployment', title: 'Deployment YAML', yaml: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: placeholder\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: placeholder\n  template:\n    spec:\n      containers:\n        - name: placeholder\n          image: placeholder:latest' },
+            { key: 'service', title: 'Service YAML', yaml: 'apiVersion: v1\nkind: Service\nmetadata:\n  name: placeholder\nspec:\n  selector:\n    app: placeholder\n  ports:\n    - port: 80\n      targetPort: 8080' },
+            { key: 'ingress', title: 'Ingress YAML', yaml: 'apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n  name: placeholder\nspec:\n  rules:\n    - host: placeholder.example.com\n      http:\n        paths:\n          - path: /\n            pathType: Prefix\n            backend:\n              service:\n                name: placeholder\n                port:\n                  number: 80' },
+          ].map(item => (
+            <div key={item.key}>
+              <button
+                onClick={() => toggleYaml(item.key)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
+              >
+                <div className="flex items-center space-x-2">
+                  <FileText size={14} className="text-slate-400" />
+                  <span className="font-medium">{item.title}</span>
+                </div>
+                {expandedYaml[item.key] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+              {expandedYaml[item.key] && (
+                <div className="px-4 pb-4">
+                  <pre className="text-xs font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3 overflow-x-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                    {item.yaml}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -13,6 +13,8 @@ import ServiceRuntime from "@/pages/ServiceRuntime";
 import ReleasesPage from "@/pages/ReleasesPage";
 import ReleaseWizard from "@/pages/ReleaseWizard";
 import MonitoringPage from "@/pages/MonitoringPage";
+import EntryPage from "@/pages/EntryPage";
+import SettingsPage from "@/pages/SettingsPage";
 
 export default function App() {
   return (
@@ -25,6 +27,8 @@ export default function App() {
           <Route path="/apps/:appName/services/:serviceName/release" element={<ReleaseWizard />} />
           <Route path="/releases" element={<ReleasesPage />} />
           <Route path="/monitoring" element={<MonitoringPage />} />
+          <Route path="/entries" element={<EntryPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/nodes" element={<NodeList />} />
           <Route path="/namespaces" element={<NamespaceList />} />
           <Route path="/deployments" element={<DeploymentList />} />
@@ -32,11 +36,6 @@ export default function App() {
           <Route path="/services" element={<ServiceList />} />
           <Route path="/ingresses" element={<IngressList />} />
           <Route path="/configmaps" element={<ConfigMapList />} />
-          <Route path="/settings" element={
-            <div className="flex h-full items-center justify-center text-slate-500">
-              Settings Page - Coming Soon
-            </div>
-          } />
         </Routes>
       </Layout>
     </Router>

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store/appStore';
 import { Application } from '@/lib/api';
-import { ArrowLeft, Plus, CheckCircle2, AlertCircle, XCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Plus, CheckCircle2, AlertCircle, XCircle, Clock, Layers, TrendingUp, AlertTriangle, Timer } from 'lucide-react';
 
 export default function ApplicationRuntime() {
   const { appName } = useParams<{ appName: string }>();
@@ -64,10 +64,26 @@ export default function ApplicationRuntime() {
             {app.description && <p className="text-sm text-slate-500 mt-1">{app.description}</p>}
           </div>
         </div>
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-4 text-sm text-slate-500">
-            <span>Services: {app.services.length}</span>
-            <span>Revisions: {activeRevisions}</span>
+        <div className="flex items-center space-x-6 text-sm">
+          <div className="flex items-center space-x-1.5">
+            <Layers size={14} className="text-slate-400" />
+            <span className="text-slate-500">Services</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">{app.services.length}</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <TrendingUp size={14} className="text-blue-400" />
+            <span className="text-slate-500">QPS</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">--</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <AlertTriangle size={14} className="text-amber-400" />
+            <span className="text-slate-500">Error</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">--</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <Timer size={14} className="text-purple-400" />
+            <span className="text-slate-500">Latency</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">--</span>
           </div>
         </div>
       </div>
@@ -75,7 +91,7 @@ export default function ApplicationRuntime() {
       {/* 服务网格 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {app.services.map((svc) => {
-          const activeRevision = svc.revisions?.find(r => r.status === 'Stable' || r.status === 'Canary');
+          const activeRevision = svc.revisions?.find(r => r.status === 'Running' || r.status === 'Canary');
           const canaryRevision = svc.revisions?.find(r => r.status === 'Canary');
           const isHealthy = svc.status === 'RUNNING';
 

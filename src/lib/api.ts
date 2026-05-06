@@ -136,7 +136,7 @@ export interface Revision {
   targetCpuUtilization?: number;
   targetMemoryUtilization?: number;
   trafficWeight: number;
-  status: 'Stable' | 'Canary' | 'Pending' | 'Failed' | 'Offline';
+  status: 'Running' | 'Ready' | 'Canary' | 'Pending' | 'Failed' | 'Offline';
   createdAt?: string;
   ports?: PortSpec[];
   env?: EnvVar;
@@ -205,6 +205,8 @@ export interface CreateReleaseRequest {
   maxReplicas?: number;
   mode: 'rolling' | 'canary';
   canaryWeight?: number;
+  maxUnavailable?: number;
+  maxSurge?: number;
   ports?: PortSpec[];
   env?: EnvVar;
   requestsCpu?: string;
