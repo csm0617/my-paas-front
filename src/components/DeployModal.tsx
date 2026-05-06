@@ -143,7 +143,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
 
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
-  const [expandedSvcSections, setExpandedSvcSections] = useState<Record<string, Set<'networking' | 'workloads' | 'istio'>>>({});
+  const [expandedSvcSections, setExpandedSvcSections] = useState<Record<string, Set<'networking' | 'workloads' | 'istio' | 'hpa'>>>({});
   const [nodePortStatus, setNodePortStatus] = useState<Record<number, { checking: boolean, available: boolean | null }>>({});
   const [enableMicroserviceGovernance, setEnableMicroserviceGovernance] = useState(false);
   const [istioDraft, setIstioDraft] = useState<IstioDraft>({
@@ -334,9 +334,9 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
     });
   };
 
-  const toggleServiceSection = (serviceId: string, section: 'networking' | 'workloads' | 'istio') => {
+  const toggleServiceSection = (serviceId: string, section: 'networking' | 'workloads' | 'istio' | 'hpa') => {
     setExpandedSvcSections((prev) => {
-      const current = prev[serviceId] ? new Set(prev[serviceId]) : new Set<'networking' | 'workloads' | 'istio'>(['workloads']);
+      const current = prev[serviceId] ? new Set(prev[serviceId]) : new Set<'networking' | 'workloads' | 'istio' | 'hpa'>(['workloads']);
       if (current.has(section)) current.delete(section);
       else current.add(section);
       return { ...prev, [serviceId]: current };
@@ -1343,47 +1343,65 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                             </div>
                                           </div>
 
-                                          {/* Scaling */}
-                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div>
-                                              <label className="block text-xs font-medium text-slate-500 mb-1">Replicas</label>
-                                              <input
-                                                type="number"
-                                                min="0"
-                                                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                                value={cnt.replicas}
-                                                onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, replicas: Number(e.target.value) }))}
-                                              />
-                                            </div>
-                                            <div>
-                                              <label className="block text-xs font-medium text-slate-500 mb-1">Max Replicas</label>
-                                              <input
-                                                type="number"
-                                                min={cnt.replicas}
-                                                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                                value={cnt.maxReplicas}
-                                                onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, maxReplicas: Number(e.target.value) }))}
-                                              />
-                                            </div>
-                                            <div>
-                                              <label className="block text-xs font-medium text-slate-500 mb-1">Target CPU/Mem (%)</label>
-                                              <div className="flex space-x-2">
-                                                <input
-                                                  type="number"
-                                                  min="1" max="100" placeholder="CPU"
-                                                  className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                                  value={cnt.targetCpuUtilization || ''}
-                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, targetCpuUtilization: e.target.value ? Number(e.target.value) : undefined }))}
-                                                />
-                                                <input
-                                                  type="number"
-                                                  min="1" max="100" placeholder="Mem"
-                                                  className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                                  value={cnt.targetMemoryUtilization || ''}
-                                                  onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, targetMemoryUtilization: e.target.value ? Number(e.target.value) : undefined }))}
-                                                />
+                                          {/* Scaling / HPA */}
+                                          <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                                            <div
+                                              className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
+                                              onClick={() => toggleServiceSection(svc.id, 'hpa')}
+                                            >
+                                              <div className="flex items-center space-x-2">
+                                                {expandedSvcSections[svc.id]?.has('hpa') ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+                                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">HPA (Auto Scaling)</span>
+                                                <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                                                  {cnt.maxReplicas > cnt.replicas ? `${cnt.replicas}-${cnt.maxReplicas}` : `${cnt.replicas}`}
+                                                </span>
                                               </div>
                                             </div>
+                                            {expandedSvcSections[svc.id]?.has('hpa') && (
+                                              <div className="p-3 border-t border-slate-200 dark:border-slate-700">
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                  <div>
+                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Replicas</label>
+                                                    <input
+                                                      type="number"
+                                                      min="0"
+                                                      className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                      value={cnt.replicas}
+                                                      onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, replicas: Number(e.target.value) }))}
+                                                    />
+                                                  </div>
+                                                  <div>
+                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Max Replicas</label>
+                                                    <input
+                                                      type="number"
+                                                      min={cnt.replicas}
+                                                      className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                      value={cnt.maxReplicas}
+                                                      onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, maxReplicas: Number(e.target.value) }))}
+                                                    />
+                                                  </div>
+                                                  <div>
+                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Target CPU/Mem (%)</label>
+                                                    <div className="flex space-x-2">
+                                                      <input
+                                                        type="number"
+                                                        min="1" max="100" placeholder="CPU"
+                                                        className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                        value={cnt.targetCpuUtilization || ''}
+                                                        onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, targetCpuUtilization: e.target.value ? Number(e.target.value) : undefined }))}
+                                                      />
+                                                      <input
+                                                        type="number"
+                                                        min="1" max="100" placeholder="Mem"
+                                                        className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                        value={cnt.targetMemoryUtilization || ''}
+                                                        onChange={(e) => updateContainer(sIdx, cIdx, c => ({ ...c, targetMemoryUtilization: e.target.value ? Number(e.target.value) : undefined }))}
+                                                      />
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            )}
                                           </div>
 
                                           {/* Ports */}
