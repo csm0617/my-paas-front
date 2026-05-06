@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Settings, Layers, Box, Share2, Link as LinkIcon, Server, FileCode, Activity, FolderTree, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Layers, Rocket, Activity, Server, FolderTree, Package, Box, Share2, Link as LinkIcon, FileCode, Settings, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isInfraExpanded, setIsInfraExpanded] = useState(false);
+
+  const infraPaths = ['/nodes', '/namespaces', '/deployments', '/pods', '/services', '/ingresses', '/configmaps'];
+  const isInfraActive = infraPaths.some(p => location.pathname.startsWith(p));
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans">
@@ -38,93 +42,139 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
             }`}
           >
-            <LayoutDashboard size={20} className="shrink-0" />
+            <Layers size={20} className="shrink-0" />
             {!isSidebarCollapsed && <span className="truncate">Applications</span>}
           </Link>
           <Link
-            to="/nodes"
-            title={isSidebarCollapsed ? "Nodes" : ""}
+            to="/releases"
+            title={isSidebarCollapsed ? "Releases" : ""}
             className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
-              location.pathname === '/nodes'
+              location.pathname === '/releases'
                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
                 : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
             }`}
           >
-            <Server size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Nodes</span>}
+            <Rocket size={20} className="shrink-0" />
+            {!isSidebarCollapsed && <span className="truncate">Releases</span>}
           </Link>
           <Link
-            to="/namespaces"
-            title={isSidebarCollapsed ? "Namespaces" : ""}
+            to="/monitoring"
+            title={isSidebarCollapsed ? "Monitoring" : ""}
             className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
-              location.pathname === '/namespaces'
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
-                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            <FolderTree size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Namespaces</span>}
-          </Link>
-          <Link
-            to="/deployments"
-            title={isSidebarCollapsed ? "Deployments" : ""}
-            className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
-              location.pathname === '/deployments'
+              location.pathname === '/monitoring'
                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
                 : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
             }`}
           >
             <Activity size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Deployments</span>}
+            {!isSidebarCollapsed && <span className="truncate">Monitoring</span>}
           </Link>
-          <Link
-            to="/pods"
-            title={isSidebarCollapsed ? "Pods" : ""}
-            className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
-              location.pathname === '/pods'
+          <div className="border-t border-slate-200 dark:border-slate-700 my-2" />
+          <button
+            onClick={() => {
+              if (isSidebarCollapsed) {
+                setIsSidebarCollapsed(false);
+                setIsInfraExpanded(true);
+              } else {
+                setIsInfraExpanded(!isInfraExpanded);
+              }
+            }}
+            title={isSidebarCollapsed ? "Infrastructure" : ""}
+            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
+              isInfraActive
                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
                 : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
             }`}
           >
-            <Box size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Pods</span>}
-          </Link>
-          <Link
-            to="/services"
-            title={isSidebarCollapsed ? "Services" : ""}
-            className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
-              location.pathname === '/services'
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
-                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            <Share2 size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Services</span>}
-          </Link>
-          <Link
-            to="/ingresses"
-            title={isSidebarCollapsed ? "Ingresses" : ""}
-            className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
-              location.pathname === '/ingresses'
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
-                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            <LinkIcon size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Ingresses</span>}
-          </Link>
-          <Link
-            to="/configmaps"
-            title={isSidebarCollapsed ? "Config Groups" : ""}
-            className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${isSidebarCollapsed ? 'justify-center' : 'space-x-3'} ${
-              location.pathname === '/configmaps'
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
-                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            <FileCode size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="truncate">Config Groups</span>}
-          </Link>
+            <Server size={20} className="shrink-0" />
+            {!isSidebarCollapsed && (
+              <>
+                <span className="truncate flex-1 text-left">Infrastructure</span>
+                {isInfraExpanded ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
+              </>
+            )}
+          </button>
+          {!isSidebarCollapsed && isInfraExpanded && (
+            <div className="ml-4 space-y-1 border-l-2 border-slate-200 dark:border-slate-700 pl-3">
+              <Link
+                to="/nodes"
+                className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 space-x-3 ${
+                  location.pathname === '/nodes'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold text-sm'
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-sm'
+                }`}
+              >
+                <Server size={16} className="shrink-0" />
+                <span className="truncate">Nodes</span>
+              </Link>
+              <Link
+                to="/namespaces"
+                className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 space-x-3 ${
+                  location.pathname === '/namespaces'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold text-sm'
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-sm'
+                }`}
+              >
+                <FolderTree size={16} className="shrink-0" />
+                <span className="truncate">Namespaces</span>
+              </Link>
+              <Link
+                to="/deployments"
+                className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 space-x-3 ${
+                  location.pathname === '/deployments'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold text-sm'
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-sm'
+                }`}
+              >
+                <Package size={16} className="shrink-0" />
+                <span className="truncate">Workloads</span>
+              </Link>
+              <Link
+                to="/pods"
+                className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 space-x-3 ${
+                  location.pathname === '/pods'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold text-sm'
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-sm'
+                }`}
+              >
+                <Box size={16} className="shrink-0" />
+                <span className="truncate">Instances</span>
+              </Link>
+              <Link
+                to="/services"
+                className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 space-x-3 ${
+                  location.pathname === '/services'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold text-sm'
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-sm'
+                }`}
+              >
+                <Share2 size={16} className="shrink-0" />
+                <span className="truncate">Endpoints</span>
+              </Link>
+              <Link
+                to="/ingresses"
+                className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 space-x-3 ${
+                  location.pathname === '/ingresses'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold text-sm'
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-sm'
+                }`}
+              >
+                <LinkIcon size={16} className="shrink-0" />
+                <span className="truncate">Routes</span>
+              </Link>
+              <Link
+                to="/configmaps"
+                className={`flex items-center px-3 py-2 rounded-lg transition-all duration-200 space-x-3 ${
+                  location.pathname === '/configmaps'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold text-sm'
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-sm'
+                }`}
+              >
+                <FileCode size={16} className="shrink-0" />
+                <span className="truncate">Config Groups</span>
+              </Link>
+            </div>
+          )}
           <Link
             to="/settings"
             title={isSidebarCollapsed ? "Settings" : ""}
@@ -144,7 +194,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center px-8 shadow-sm z-10">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
-            {location.pathname === '/' ? 'Application Management' : location.pathname === '/nodes' ? 'Node Management' : location.pathname === '/namespaces' ? 'Namespace Management' : location.pathname === '/deployments' ? 'Deployment Management' : location.pathname === '/pods' ? 'Pod Management' : location.pathname === '/services' ? 'Service Management' : location.pathname === '/ingresses' ? 'Ingress Management' : location.pathname === '/configmaps' ? 'Config Group Management' : 'Settings'}
+            {location.pathname === '/' ? 'Applications' : location.pathname === '/releases' ? 'Releases' : location.pathname === '/monitoring' ? 'Monitoring' : location.pathname === '/nodes' ? 'Node Management' : location.pathname === '/namespaces' ? 'Namespace Management' : location.pathname === '/deployments' ? 'Workload Management' : location.pathname === '/pods' ? 'Instance Management' : location.pathname === '/services' ? 'Endpoint Management' : location.pathname === '/ingresses' ? 'Route Management' : location.pathname === '/configmaps' ? 'Config Group Management' : 'Settings'}
           </h2>
         </header>
         <div className="flex-1 overflow-auto p-8">

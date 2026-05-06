@@ -8,6 +8,11 @@ import IngressList from "@/pages/IngressList";
 import NodeList from "@/pages/NodeList";
 import ConfigMapList from "@/pages/ConfigMapList";
 import DeploymentList from "@/pages/DeploymentList";
+import ApplicationRuntime from "@/pages/ApplicationRuntime";
+import ServiceRuntime from "@/pages/ServiceRuntime";
+import ReleasesPage from "@/pages/ReleasesPage";
+import ReleaseWizard from "@/pages/ReleaseWizard";
+import MonitoringPage from "@/pages/MonitoringPage";
 
 export default function App() {
   return (
@@ -15,6 +20,11 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/apps/:appName" element={<ApplicationRuntime />} />
+          <Route path="/apps/:appName/services/:serviceName" element={<ServiceRuntime />} />
+          <Route path="/apps/:appName/services/:serviceName/release" element={<ReleaseWizard />} />
+          <Route path="/releases" element={<ReleasesPage />} />
+          <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="/nodes" element={<NodeList />} />
           <Route path="/namespaces" element={<NamespaceList />} />
           <Route path="/deployments" element={<DeploymentList />} />

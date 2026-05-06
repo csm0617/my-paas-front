@@ -123,7 +123,101 @@ export interface ApplicationService {
   affinityJson?: string;
   tolerationsJson?: string;
   containers: ContainerSpec[];
+  revisions?: Revision[];
+  protocol?: 'HTTP' | 'GRPC' | 'TCP';
   status?: string;
+}
+
+export interface Revision {
+  name: string;
+  image: string;
+  replicas: number;
+  maxReplicas?: number;
+  targetCpuUtilization?: number;
+  targetMemoryUtilization?: number;
+  trafficWeight: number;
+  status: 'Stable' | 'Canary' | 'Pending' | 'Failed' | 'Offline';
+  createdAt?: string;
+  ports?: PortSpec[];
+  env?: EnvVar;
+  requestsCpu?: string;
+  requestsMemory?: string;
+  limitsCpu?: string;
+  limitsMemory?: string;
+  imagePullPolicy?: string;
+  imagePullSecrets?: string[];
+  configMounts?: ConfigMount[];
+  secretMounts?: SecretMount[];
+  nodeSelector?: Record<string, string>;
+  affinityJson?: string;
+  tolerationsJson?: string;
+}
+
+export interface Release {
+  id: string;
+  serviceName: string;
+  fromRevision: string;
+  toRevision: string;
+  mode: 'rolling' | 'canary';
+  steps?: number[];
+  currentStep?: number;
+  status: 'Pending' | 'InProgress' | 'Completed' | 'Failed' | 'RolledBack';
+  createdAt?: string;
+  completedAt?: string;
+}
+
+export interface CreateServiceRequest {
+  name: string;
+  description?: string;
+  serviceType: 'internal' | 'entry';
+  protocol: 'HTTP' | 'GRPC' | 'TCP';
+  initialRevision: {
+    name: string;
+    image: string;
+    replicas: number;
+    maxReplicas?: number;
+    ports?: PortSpec[];
+    env?: EnvVar;
+    requestsCpu?: string;
+    requestsMemory?: string;
+    limitsCpu?: string;
+    limitsMemory?: string;
+    imagePullPolicy?: string;
+    imagePullSecrets?: string[];
+    configMounts?: ConfigMount[];
+    secretMounts?: SecretMount[];
+    nodeSelector?: Record<string, string>;
+    affinityJson?: string;
+    tolerationsJson?: string;
+  };
+  network?: {
+    domain?: string;
+    path?: string;
+    enableHttps?: boolean;
+  };
+}
+
+export interface CreateReleaseRequest {
+  serviceName: string;
+  revisionName: string;
+  image: string;
+  replicas: number;
+  maxReplicas?: number;
+  mode: 'rolling' | 'canary';
+  canaryWeight?: number;
+  ports?: PortSpec[];
+  env?: EnvVar;
+  requestsCpu?: string;
+  requestsMemory?: string;
+  limitsCpu?: string;
+  limitsMemory?: string;
+  imagePullPolicy?: string;
+  imagePullSecrets?: string[];
+  configMounts?: ConfigMount[];
+  secretMounts?: SecretMount[];
+  nodeSelector?: Record<string, string>;
+  affinityJson?: string;
+  tolerationsJson?: string;
 }
 
 export interface DeployCommand {
@@ -373,6 +467,37 @@ export const api = {
 
   getNodes: async (): Promise<K8sNode[]> => {
     const res = await apiClient.get<Result<K8sNode[]>>(`/nodes`);
+    return res.data.data;
+  },
+
+  createService: async (namespace: string, appName: string, request: CreateServiceRequest): Promise<ApplicationService> => {
+    const res = await apiClient.post<Result<ApplicationService>>(`/applications/${namespace}/${appName}/services`, request);
+    return res.data.data;
+  },
+
+  createRelease: async (namespace: string, appName: string, serviceName: string, request: CreateReleaseRequest): Promise<Release> => {
+    const res = await apiClient.post<Result<Release>>(`/applications/${namespace}/${appName}/services/${serviceName}/releases`, request);
+    return res.data.data;
+  },
+
+  adjustTraffic: async (namespace: string, appName: string, serviceName: string, weights: Record<string, number>): Promise<void> => {
+    await apiClient.put(`/applications/${namespace}/${appName}/services/${serviceName}/traffic`, { weights });
+  },
+
+  promoteRevision: async (namespace: string, appName: string, serviceName: string, revisionName: string): Promise<void> => {
+    await apiClient.post(`/applications/${namespace}/${appName}/services/${serviceName}/revisions/${revisionName}/promote`);
+  },
+
+  offlineRevision: async (namespace: string, appName: string, serviceName: string, revisionName: string): Promise<void> => {
+    await apiClient.post(`/applications/${namespace}/${appName}/services/${serviceName}/revisions/${revisionName}/offline`);
+  },
+
+  rollbackRelease: async (namespace: string, appName: string, serviceName: string, releaseId: string): Promise<void> => {
+    await apiClient.post(`/applications/${namespace}/${appName}/services/${serviceName}/releases/${releaseId}/rollback`);
+  },
+
+  getServiceMetrics: async (namespace: string, appName: string, serviceName: string): Promise<{ qps: number; errorRate: number; latencyP99: number; cpuUsage: number; memoryUsage: number }> => {
+    const res = await apiClient.get<Result<{ qps: number; errorRate: number; latencyP99: number; cpuUsage: number; memoryUsage: number }>>(`/applications/${namespace}/${appName}/services/${serviceName}/metrics`);
     return res.data.data;
   },
 };
