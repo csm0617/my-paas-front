@@ -143,7 +143,7 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
 
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
-  const [expandedSvcSections, setExpandedSvcSections] = useState<Record<string, Set<'networking' | 'workloads' | 'istio' | 'hpa'>>>({});
+  const [expandedSvcSections, setExpandedSvcSections] = useState<Record<string, Set<'networking' | 'workloads' | 'istio' | 'hpa' | 'mounts'>>>({});
   const [nodePortStatus, setNodePortStatus] = useState<Record<number, { checking: boolean, available: boolean | null }>>({});
   const [enableMicroserviceGovernance, setEnableMicroserviceGovernance] = useState(false);
   const [istioDraft, setIstioDraft] = useState<IstioDraft>({
@@ -334,9 +334,9 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
     });
   };
 
-  const toggleServiceSection = (serviceId: string, section: 'networking' | 'workloads' | 'istio' | 'hpa') => {
+  const toggleServiceSection = (serviceId: string, section: 'networking' | 'workloads' | 'istio' | 'hpa' | 'mounts') => {
     setExpandedSvcSections((prev) => {
-      const current = prev[serviceId] ? new Set(prev[serviceId]) : new Set<'networking' | 'workloads' | 'istio' | 'hpa'>(['workloads']);
+      const current = prev[serviceId] ? new Set(prev[serviceId]) : new Set<'networking' | 'workloads' | 'istio' | 'hpa' | 'mounts'>(['workloads']);
       if (current.has(section)) current.delete(section);
       else current.add(section);
       return { ...prev, [serviceId]: current };
@@ -1540,15 +1540,30 @@ export default function DeployModal({ isOpen, onClose, onDeploy, initialApp, ini
                                           </div>
 
                                           {/* Mounts */}
-                                          <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">Volume Mounts</label>
-                                            <ConfigMountSection
-                                              namespace={formState.namespace}
-                                              configMounts={cnt.configMounts}
-                                              setConfigMounts={(cm) => updateContainer(sIdx, cIdx, c => ({ ...c, configMounts: typeof cm === 'function' ? cm(c.configMounts) : cm }))}
-                                              secretMounts={cnt.secretMounts}
-                                              setSecretMounts={(sm) => updateContainer(sIdx, cIdx, c => ({ ...c, secretMounts: typeof sm === 'function' ? sm(c.secretMounts) : sm }))}
-                                            />
+                                          <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                                            <div
+                                              className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900 cursor-pointer select-none"
+                                              onClick={() => toggleServiceSection(svc.id, 'mounts')}
+                                            >
+                                              <div className="flex items-center space-x-2">
+                                                {expandedSvcSections[svc.id]?.has('mounts') ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+                                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Volume Mounts</span>
+                                                <span className="text-xs text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                                                  {(cnt.configMounts?.length || 0) + (cnt.secretMounts?.length || 0)} items
+                                                </span>
+                                              </div>
+                                            </div>
+                                            {expandedSvcSections[svc.id]?.has('mounts') && (
+                                              <div className="p-3 border-t border-slate-200 dark:border-slate-700">
+                                                <ConfigMountSection
+                                                  namespace={formState.namespace}
+                                                  configMounts={cnt.configMounts}
+                                                  setConfigMounts={(cm) => updateContainer(sIdx, cIdx, c => ({ ...c, configMounts: typeof cm === 'function' ? cm(c.configMounts) : cm }))}
+                                                  secretMounts={cnt.secretMounts}
+                                                  setSecretMounts={(sm) => updateContainer(sIdx, cIdx, c => ({ ...c, secretMounts: typeof sm === 'function' ? sm(c.secretMounts) : sm }))}
+                                                />
+                                              </div>
+                                            )}
                                           </div>
 
                                           {/* Scheduling */}
